@@ -14,11 +14,11 @@ classifiers=[
 ]
 
 packages = [
-    { include = "a2wsgi" },
+    { include = "a2wsgi.py" },
 ]
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.6"
 
 [tool.poetry.dev-dependencies]
 pylint = "^2.5.0"
