@@ -1,6 +1,12 @@
 # a2wsgi
 
-Convert WSGI app to ASGI app.
+Convert WSGI app to ASGI app. Pure Python. No dependencies. High performance.
+
+## Install
+
+```
+pip install a2wsgi
+```
 
 ## How to use
 
