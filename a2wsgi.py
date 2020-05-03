@@ -1,12 +1,12 @@
 import sys
-import time
 import typing
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 __all__ = ("WSGIMiddleware",)
 
-VERSION = (0, 1, 0)
+VERSION = (0, 2, 0)
 __version__ = ".".join(map(str, VERSION))
 
 # type define
@@ -21,6 +21,7 @@ class Body:
     def __init__(self, recv_event: asyncio.Event) -> None:
         self.buffer = bytearray()
         self.recv_event = recv_event
+        self.sync_recv_event = threading.Event()
         self._has_more = True
 
     def feed_eof(self) -> None:
@@ -34,18 +35,28 @@ class Body:
 
     def write(self, data: bytes) -> None:
         self.buffer.extend(data)
+        self.sync_recv_event.set()
 
-    def _read(self, size: int = 0) -> bytes:
+    def wait_more_data(self) -> None:
         """
-        read data
+        block until the data is written this time.
+        """
+        if not self._has_more:
+            return
+        self.recv_event.set()
+        self.sync_recv_event.wait()
+        self.sync_recv_event.clear()
 
-        * Call _read() to pre-read data into the buffer
-        * Call _read(size) to read data of specified length in buffer
-        * Call _read(negative) to read all data in buffer
+    def get_data(self, size: int = 0) -> bytes:
         """
+        get data from `self.buffer`
+
+        * Call get_data(size) to read data of specified length in buffer
+        * Call get_data(negative) to read all data in buffer
+        """
+
         while self._has_more and not self.buffer:
-            self.recv_event.set()
-            time.sleep(0.25)
+            self.wait_more_data()
 
         if size < 0:
             data = self.buffer[:]
@@ -56,42 +67,33 @@ class Body:
         return bytes(data)
 
     def read(self, size: int = -1) -> bytes:
-        data = self._read(size)
+        data = self.get_data(size)
         while (len(data) < size or size == -1) and self.has_more:
-            data += self._read(size - len(data))
+            data += self.get_data(size - len(data))
         return data
 
-    def _readline(self, limit: int) -> typing.Optional[bytes]:
-        """
-        read utils b"\n" or length == limit
-
-        If the data does not meet the requirements, it returns None and requests more data.
-        """
-        index = self.buffer.find(b"\n")
-        if -1 < index:  # found b"\n"
-            if limit > -1:
-                return self._read(min(index + 1, limit))
-            return self._read(index + 1)
-
-        if -1 < limit < len(self.buffer):
-            return self._read(limit)
-
-        if self._has_more:  # Not found b"\n", request more data
-            self.recv_event.set()
-        return None
-
     def readline(self, limit: int = -1) -> bytes:
-        data = self._readline(limit)
-        while (not data) and self.has_more:
-            data = self._readline(limit)
-        return data if data else bytes()
+        data = bytes()
+        while self.has_more:
+            index = self.buffer.find(b"\n")
+            if -1 < index:  # found b"\n"
+                if limit > -1:
+                    return self.get_data(min(index + 1, limit))
+                return self.get_data(index + 1)
+
+            if -1 < limit < len(self.buffer):
+                return self.get_data(limit)
+
+            _data = self.get_data(-1)
+            data = data + _data
+            limit -= len(_data)
+        return data
 
     def readlines(self, hint: int = -1) -> typing.List[bytes]:
         if hint == -1:
             while self._has_more:
-                self.recv_event.set()
-                time.sleep(0.25)
-            raw_data = self.read(-1)
+                self.wait_more_data()
+            raw_data = self.get_data(-1)
             if raw_data[-1] == 10:  # 10 -> b"\n"
                 raw_data = raw_data[:-1]
             bytelist = raw_data.split(b"\n")
