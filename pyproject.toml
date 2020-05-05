@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "a2wsgi"
 version = "0.2.0"
-description = "Convert WSGI app to ASGI app."
+description = "Convert WSGI app to ASGI app or ASGI app to WSGI app."
 authors = ["abersheeran <me@abersheeran.com>"]
 readme = "README.md"
 license = "Apache-2.0"
