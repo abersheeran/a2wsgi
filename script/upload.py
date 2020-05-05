@@ -15,7 +15,7 @@ def get_version() -> str:
 
 os.chdir(here)
 os.system(f"poetry version {get_version()}")
-os.system("git add a2wsgi.py pyproject.toml")
+os.system("git add a2wsgi/__init__.py pyproject.toml")
 os.system(f'git commit -m "v{get_version()}"')
 os.system("git push")
 os.system("poetry publish --build")

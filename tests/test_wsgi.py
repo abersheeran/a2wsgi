@@ -5,7 +5,7 @@ from tempfile import TemporaryFile
 import pytest
 from starlette.testclient import TestClient
 
-from a2wsgi import WSGIMiddleware, Body, build_environ
+from a2wsgi.wsgi import WSGIMiddleware, Body, build_environ
 
 
 def test_body():

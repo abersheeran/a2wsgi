@@ -4,17 +4,16 @@ import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
+from .types import (
+    Scope,
+    Receive,
+    Send,
+    Environ,
+    StartResponse,
+    WSGIApp,
+)
+
 __all__ = ("WSGIMiddleware",)
-
-VERSION = (0, 2, 0)
-__version__ = ".".join(map(str, VERSION))
-
-# type define
-Message = typing.MutableMapping[str, typing.Any]
-Scope = typing.MutableMapping[str, typing.Any]
-Receive = typing.Callable[[], typing.Awaitable[Message]]
-Send = typing.Callable[[Message], typing.Awaitable[None]]
-ASGIApp = typing.Callable[[Scope, Receive, Send], typing.Awaitable[None]]
 
 
 class Body:
@@ -105,7 +104,7 @@ class Body:
             yield self.readline()
 
 
-def build_environ(scope: Scope, body: Body) -> dict:
+def build_environ(scope: Scope, body: Body) -> Environ:
     """
     Builds a scope and request body into a WSGI environ object.
     """
@@ -151,7 +150,11 @@ def build_environ(scope: Scope, body: Body) -> dict:
 
 
 class WSGIMiddleware:
-    def __init__(self, app: typing.Callable) -> None:
+    """
+    Convert WSGIApp to ASGIApp.
+    """
+
+    def __init__(self, app: WSGIApp) -> None:
         self.app = app
         self.executor = ThreadPoolExecutor(thread_name_prefix="WSGI")
 
@@ -163,7 +166,7 @@ class WSGIMiddleware:
 
 class WSGIResponder:
     def __init__(
-        self, app: typing.Callable, scope: Scope, executor: ThreadPoolExecutor
+        self, app: WSGIApp, scope: Scope, executor: ThreadPoolExecutor
     ) -> None:
         self.app = app
         self.scope = scope
@@ -245,7 +248,7 @@ class WSGIResponder:
             )
             self.loop.call_soon_threadsafe(self.send_event.set)
 
-    def wsgi(self, environ: dict, start_response: typing.Callable) -> None:
+    def wsgi(self, environ: Environ, start_response: StartResponse) -> None:
         for chunk in self.app(environ, start_response):
             self.send_queue.append(
                 {"type": "http.response.body", "body": chunk, "more_body": True}
