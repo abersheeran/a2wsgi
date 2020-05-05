@@ -236,7 +236,7 @@ class WSGIResponder:
             status_code_string, _ = status.split(" ", 1)
             status_code = int(status_code_string)
             headers = [
-                (name.strip().encode("ascii").lower(), value.strip().encode("ascii"))
+                (name.strip().encode("latin1").lower(), value.strip().encode("latin1"))
                 for name, value in response_headers
             ]
             self.send_queue.append(

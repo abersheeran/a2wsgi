@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from enum import Enum
 from http import HTTPStatus
 from typing import Iterable, AnyStr
 
@@ -14,7 +15,9 @@ from .types import (
 __all__ = ("ASGIMiddleware",)
 
 global_loop = asyncio.new_event_loop()
-threading.Thread(target=global_loop.run_forever, daemon=True, name="global_loop").start()
+threading.Thread(
+    target=global_loop.run_forever, daemon=True, name="global_loop"
+).start()
 
 
 def build_scope(environ: Environ) -> Scope:
@@ -64,6 +67,12 @@ class ASGIMiddleware:
         return ASGIResponder(environ, start_response, self.loop)(self.app)
 
 
+class ASGIState(Enum):
+    RECEIVE = "R"
+    SEND = "S"
+    ERROR = "E"
+
+
 class ASGIResponder:
     def __init__(
         self,
@@ -76,17 +85,18 @@ class ASGIResponder:
         self.loop = loop
         self.sync_event = threading.Event()
         self.async_event = asyncio.Event(loop=self.loop)
+        self.state = None
         self.body = bytearray()
         self.more_body = True
         self.exception = None
-        self.resp_body = bytearray()
-        self.more_resp_body = True
+        self.asgi_msg: Message = None
 
     def _done_callback(self, future: asyncio.Future) -> None:
         if future.exception():
-            self.exception = future.exception()
-            self.sync_event.set()
-        self.more_resp_body = False
+            e = future.exception()
+            self.exception = type(e), e, e.__traceback__
+            self.state = ASGIState.ERROR
+        self.sync_event.set()
 
     def __call__(self, app: ASGIApp) -> Iterable[AnyStr]:
         scope = build_scope(self.environ)
@@ -96,28 +106,66 @@ class ASGIResponder:
         run_asgi.add_done_callback(self._done_callback)
         read_count, body = 0, self.environ["wsgi.input"]
         content_length = int(self.environ.get("CONTENT_LENGTH", 0))
-        while read_count < content_length:
+        self.more_body = content_length > 0
+
+        while not run_asgi.done():
+            self.loop.call_soon_threadsafe(self.async_event.clear)
             self.sync_event.wait()
-            if run_asgi.done():  # get a error
-                self.start_response(f"500 {HTTPStatus(500).phrase}", [], self.exception)
-                return [HTTPStatus(500).description]
-            data = body.read(16384)
-            self.body.extend(data)
-            read_count += len(data)
-            if read_count >= content_length:
-                self.more_body = False
+            if self.state == ASGIState.RECEIVE:
+                data = body.read(min(16384, content_length - read_count))
+                self.body.extend(data)
+                read_count += len(data)
+                if read_count >= content_length:
+                    self.more_body = False
+            elif self.state == ASGIState.SEND:
+                message = self.asgi_msg
+                if message["type"] == "http.response.start":
+                    status = message["status"]
+                    headers = [
+                        (
+                            name.strip().decode("latin1").lower(),
+                            value.strip().decode("latin1"),
+                        )
+                        for name, value in message["headers"]
+                    ]
+                    self.start_response(
+                        f"{status} {HTTPStatus(status).phrase}", headers
+                    )
+                elif message["type"] == "http.response.body":
+                    yield message.get("body", b"")
+                    if not message.get("more_body", False):
+                        break
+                elif message["type"] == "http.response.disconnect":
+                    break
+                else:
+                    run_asgi.cancel()
+                    raise RuntimeError("What's wrong with the ASGI app?")
+                self.asgi_msg = None
+            elif self.state == ASGIState.ERROR:
+                self.start_response(
+                    f"{500} {HTTPStatus(500).phrase}",
+                    [
+                        ("Content-Type", "text/plain; charset=utf-8"),
+                        ("Content-Length", str(len(HTTPStatus(500).description))),
+                    ],
+                    (self.exception, type(self.exception)),
+                )
+                yield str(HTTPStatus(500).description).encode("utf-8")
+                return
+            self.sync_event.clear()
+            self.async_event.set()
+            self.async_event.clear()
+        else:  # HTTP response ends, no longer blocks run_asgi
             self.async_event.set()
 
-        while self.more_resp_body:
-            self.async_event.set()
+        if not run_asgi.done():
             self.sync_event.wait()
-            yield bytes(self.resp_body)
-            del self.resp_body[:]
 
     async def receive(self) -> Message:
         if not self.more_body:
             return {"type": "http.request", "body": b"", "more_body": False}
 
+        self.state = ASGIState.RECEIVE
         self.sync_event.set()
         await self.async_event.wait()
         message = {
@@ -129,18 +177,7 @@ class ASGIResponder:
         return message
 
     async def send(self, message: Message) -> None:
-        if message["type"] == "http.response.start":
-            status = message["status"]
-            headers = [
-                (name.strip().decode("ascii").lower(), value.strip().decode("ascii"))
-                for name, value in message["headers"]
-            ]
-            self.start_response(f"{status} {HTTPStatus(status).phrase}", headers)
-        elif message["type"] == "http.response.body":
-            await self.async_event.wait()
-            self.resp_body.extend(message.get("body", b""))
-            self.more_resp_body = message.get("more_body", False)
-            self.sync_event.set()
-        elif message["type"] == "http.response.disconnect":
-            self.more_resp_body = False
-            self.sync_event.set()
+        self.state = ASGIState.SEND
+        self.asgi_msg = message
+        self.sync_event.set()
+        await self.async_event.wait()

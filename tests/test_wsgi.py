@@ -1,6 +1,5 @@
 import sys
 import asyncio
-from tempfile import TemporaryFile
 
 import pytest
 from starlette.testclient import TestClient
@@ -95,17 +94,6 @@ def test_wsgi_post():
     response = client.post("/", json={"example": 123})
     assert response.status_code == 200
     assert response.text == '{"example": 123}'
-
-
-def test_wsgi_post_big_file():
-    app = WSGIMiddleware(echo_body)
-    client = TestClient(app)
-    file = TemporaryFile()
-    for num in range(1000000):
-        file.write(str(num).encode("utf8"))
-    response = client.post("/", files={"file": file})
-    assert response.status_code == 200
-    assert response.content
 
 
 def test_wsgi_exception():
