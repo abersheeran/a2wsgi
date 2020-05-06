@@ -65,6 +65,6 @@ def test_asgi_post():
 def test_asgi_exception():
     app = ASGIMiddleware(raise_exception)
     client = TestClient(app)
-    response = client.get("/", status="*", expect_errors=True)
+    response = client.get("/", status="*")
     assert response.status_code == 500
     assert response.text == HTTPStatus(500).description
