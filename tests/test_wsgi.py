@@ -8,8 +8,7 @@ from a2wsgi.wsgi import WSGIMiddleware, Body, build_environ
 
 
 def test_body():
-    recv_event = asyncio.Event()
-    body = Body(recv_event)
+    body = Body(asyncio.get_event_loop(), asyncio.Event())
     body.write(
         b"""This is a body test.
 Why do this?
@@ -146,7 +145,7 @@ def test_build_environ():
         "client": ("134.56.78.4", 1453),
         "server": ("www.example.org", 443),
     }
-    environ = build_environ(scope, Body(asyncio.Event()))
+    environ = build_environ(scope, Body(asyncio.get_event_loop(), asyncio.Event()))
     environ.pop("wsgi.input")
     assert environ == {
         "CONTENT_LENGTH": "18",

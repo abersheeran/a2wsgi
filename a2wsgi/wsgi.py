@@ -17,8 +17,11 @@ __all__ = ("WSGIMiddleware",)
 
 
 class Body:
-    def __init__(self, recv_event: asyncio.Event) -> None:
+    def __init__(
+        self, loop: asyncio.AbstractEventLoop, recv_event: asyncio.Event
+    ) -> None:
         self.buffer = bytearray()
+        self.loop = loop
         self.recv_event = recv_event
         self.sync_recv_event = threading.Event()
         self._has_more = True
@@ -43,7 +46,7 @@ class Body:
         """
         if not self._has_more:
             return
-        self.recv_event.set()
+        self.loop.call_soon_threadsafe(self.recv_event.set)
         self.sync_recv_event.wait()
         self.sync_recv_event.clear()
 
@@ -182,7 +185,7 @@ class WSGIResponder:
         self.exc_info = None  # type: typing.Any
 
     async def __call__(self, receive: Receive, send: Send) -> None:
-        body = Body(self.recv_event)
+        body = Body(self.loop, self.recv_event)
         environ = build_environ(self.scope, body)
         sender = None
         receiver = None
@@ -216,7 +219,6 @@ class WSGIResponder:
             if not more_body:
                 body.feed_eof()
             body.write(message.get("body", b""))
-            await asyncio.sleep(0.0000001)
 
     async def sender(self, send: Send) -> None:
         while True:

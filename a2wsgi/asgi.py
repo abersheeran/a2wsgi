@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import threading
 from enum import Enum
@@ -92,7 +93,7 @@ class ASGIResponder:
         self.start_response = start_response
         self.loop = loop
         self.sync_event = threading.Event()
-        self.async_event = asyncio.Event(loop=self.loop)
+        self.async_event: asyncio.Event = None
         self.state = None
         self.body = bytearray()
         self.more_body = True
@@ -106,8 +107,18 @@ class ASGIResponder:
             self.state = ASGIState.ERROR
         self.sync_event.set()
 
+    def _init_async_event(self) -> None:
+        """
+        Must init asyncio.Event in a loop.
+
+        https://docs.python.org/3/library/asyncio-sync.html#asyncio.Event
+        """
+        if self.async_event is None:
+            self.async_event = asyncio.Event()
+
     def __call__(self, app: ASGIApp, wait_time: float) -> Iterable[AnyStr]:
         scope = build_scope(self.environ)
+        self.loop.call_soon_threadsafe(self._init_async_event)
         run_asgi: asyncio.Task = self.loop.create_task(
             app(scope, self.receive, self.send)
         )
