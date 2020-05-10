@@ -24,7 +24,7 @@ def build_scope(environ: Environ) -> Scope:
     scope = {
         "type": "http",
         "asgi": {"version": "2.1", "spec_version": "2.1",},
-        "http_version": environ["SERVER_PROTOCOL"].split("/")[1],
+        "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
         "scheme": environ.get("wsgi.url_scheme", "http"),
         "path": environ["PATH_INFO"],
@@ -116,7 +116,7 @@ class ASGIResponder:
         content_length = int(self.environ.get("CONTENT_LENGTH", 0))
         self.more_body = content_length > 0
         self.loop.call_soon_threadsafe(lambda: None)  # call loop to run
-        while not run_asgi.done() or self.state:
+        while True:  # do while
             self.sync_event.wait()
             self.sync_event.clear()
             if self.state == ASGIState.RECEIVE:
@@ -159,12 +159,14 @@ class ASGIResponder:
                     self.exception,
                 )
                 yield str(HTTPStatus(500).description).encode("utf-8")
-                return
+                break
+            if run_asgi.done() and self.state is None:
+                break
             self.state = None
             self.loop.call_soon_threadsafe(
                 lambda event: (event.set(), event.clear()), self.async_event
             )
-        # HTTP response ends, wait for run_asgi
+        # HTTP response ends, wait for run_asgi's background tasks
         self.loop.call_soon_threadsafe(self.async_event.set)
         if not run_asgi.done():
             self.sync_event.wait(wait_time)

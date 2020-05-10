@@ -1,8 +1,9 @@
 from http import HTTPStatus
 
-from webtest import TestApp as TestClient
+import httpx
+import pytest
 
-from a2wsgi.asgi import ASGIMiddleware
+from a2wsgi.asgi import ASGIMiddleware, build_scope
 
 
 async def hello_world(scope, receive, send):
@@ -15,8 +16,9 @@ async def hello_world(scope, receive, send):
         }
     )
     await send(
-        {"type": "http.response.body", "body": b"Hello, world!",}
+        {"type": "http.response.body", "body": b"Hello, world!", "more_body": True}
     )
+    await send({"type": "http.response.disconnect"})
 
 
 async def echo_body(scope, receive, send):
@@ -37,9 +39,7 @@ async def echo_body(scope, receive, send):
             ],
         }
     )
-    await send(
-        {"type": "http.response.body", "body": body,}
-    )
+    await send({"type": "http.response.body", "body": body})
 
 
 async def raise_exception(scope, receive, send):
@@ -48,23 +48,24 @@ async def raise_exception(scope, receive, send):
 
 def test_asgi_get():
     app = ASGIMiddleware(hello_world)
-    client = TestClient(app)
-    response = client.get("/")
-    assert response.status_code == 200
-    assert response.text == "Hello, world!"
+    with httpx.Client(app=app, base_url="http://testserver") as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == "Hello, world!"
 
 
 def test_asgi_post():
     app = ASGIMiddleware(echo_body)
-    client = TestClient(app)
-    response = client.post("/", "hi boy")
-    assert response.status_code == 200
-    assert response.text == "hi boy"
+    with httpx.Client(app=app, base_url="http://testserver") as client:
+        response = client.post("/", data="hi boy")
+        assert response.status_code == 200
+        assert response.text == "hi boy"
 
 
 def test_asgi_exception():
     app = ASGIMiddleware(raise_exception)
-    client = TestClient(app)
-    response = client.get("/", status="*")
-    assert response.status_code == 500
-    assert response.text == HTTPStatus(500).description
+    with httpx.Client(app=app, base_url="http://testserver") as client:
+        with pytest.raises(RuntimeError):
+            response = client.get("/")
+            assert response.status_code == 500
+            assert response.text == HTTPStatus(500).description

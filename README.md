@@ -27,3 +27,7 @@ from a2wsgi import ASGIMiddleware
 
 WSGI_APP = ASGIMiddleware(ASGI_APP)
 ```
+
+## Benchmark
+
+Run `python benchmark.py` to compare the performance of `a2wsgi` and `uvicorn.middleware.wsgi.WSGIMiddleware` / `asgiref.wsgi.WsgiToAsgi`.

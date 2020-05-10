@@ -25,6 +25,7 @@ class Body:
 
     def feed_eof(self) -> None:
         self._has_more = False
+        self.sync_recv_event.set()
 
     @property
     def has_more(self) -> bool:
@@ -36,7 +37,7 @@ class Body:
         self.buffer.extend(data)
         self.sync_recv_event.set()
 
-    def wait_more_data(self) -> None:
+    def _wait_more_data(self) -> None:
         """
         block until the data is written this time.
         """
@@ -46,7 +47,7 @@ class Body:
         self.sync_recv_event.wait()
         self.sync_recv_event.clear()
 
-    def get_data(self, size: int = 0) -> bytes:
+    def _get_data(self, size: int = 0) -> bytes:
         """
         get data from `self.buffer`
 
@@ -55,7 +56,7 @@ class Body:
         """
 
         while self._has_more and not self.buffer:
-            self.wait_more_data()
+            self._wait_more_data()
 
         if size < 0:
             data = self.buffer[:]
@@ -66,9 +67,9 @@ class Body:
         return bytes(data)
 
     def read(self, size: int = -1) -> bytes:
-        data = self.get_data(size)
+        data = self._get_data(size)
         while (len(data) < size or size == -1) and self.has_more:
-            data += self.get_data(size - len(data))
+            data += self._get_data(size - len(data))
         return data
 
     def readline(self, limit: int = -1) -> bytes:
@@ -77,13 +78,13 @@ class Body:
             index = self.buffer.find(b"\n")
             if -1 < index:  # found b"\n"
                 if limit > -1:
-                    return self.get_data(min(index + 1, limit))
-                return self.get_data(index + 1)
+                    return self._get_data(min(index + 1, limit))
+                return self._get_data(index + 1)
 
             if -1 < limit < len(self.buffer):
-                return self.get_data(limit)
+                return self._get_data(limit)
 
-            _data = self.get_data(-1)
+            _data = self._get_data(-1)
             data = data + _data
             limit -= len(_data)
         return data
@@ -91,8 +92,8 @@ class Body:
     def readlines(self, hint: int = -1) -> typing.List[bytes]:
         if hint == -1:
             while self._has_more:
-                self.wait_more_data()
-            raw_data = self.get_data(-1)
+                self._wait_more_data()
+            raw_data = self._get_data(-1)
             if raw_data[-1] == 10:  # 10 -> b"\n"
                 raw_data = raw_data[:-1]
             bytelist = raw_data.split(b"\n")
@@ -154,9 +155,11 @@ class WSGIMiddleware:
     Convert WSGIApp to ASGIApp.
     """
 
-    def __init__(self, app: WSGIApp) -> None:
+    def __init__(self, app: WSGIApp, workers: int = 10) -> None:
         self.app = app
-        self.executor = ThreadPoolExecutor(thread_name_prefix="WSGI")
+        self.executor = ThreadPoolExecutor(
+            thread_name_prefix="WSGI", max_workers=workers
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         assert scope["type"] == "http"
@@ -207,11 +210,13 @@ class WSGIResponder:
         more_body = True
         while more_body:
             await self.recv_event.wait()
-            message = await receive()
             self.recv_event.clear()
-            body.write(message.get("body", b""))
+            message = await receive()
             more_body = message.get("more_body", False)
-        body.feed_eof()
+            if not more_body:
+                body.feed_eof()
+            body.write(message.get("body", b""))
+            await asyncio.sleep(0.00000000001)
 
     async def sender(self, send: Send) -> None:
         while True:
