@@ -216,7 +216,7 @@ class WSGIResponder:
             if not more_body:
                 body.feed_eof()
             body.write(message.get("body", b""))
-            await asyncio.sleep(0.00000000001)
+            await asyncio.sleep(0.0000001)
 
     async def sender(self, send: Send) -> None:
         while True:
