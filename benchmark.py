@@ -8,7 +8,7 @@ from uvicorn.middleware.wsgi import WSGIMiddleware as UvicornWSGIMiddleware
 from asgiref.wsgi import WsgiToAsgi
 
 
-async def asgi_hello_world(scope, receive, send):
+async def asgi_echo(scope, receive, send):
     assert scope["type"] == "http"
     await send(
         {
@@ -17,34 +17,37 @@ async def asgi_hello_world(scope, receive, send):
             "headers": [[b"content-type", b"text/plain"],],
         }
     )
-    await send(
-        {"type": "http.response.body", "body": b"Hello, world!", "more_body": True}
-    )
-    await send({"type": "http.response.disconnect"})
+    body = bytes()
+    while True:
+        message = await receive()
+        body += message.get("body", b"")
+        if not message.get("more_body", False):
+            break
+    await send({"type": "http.response.body", "body": body})
 
 
-def wsgi_hello_world(environ, start_response):
+def wsgi_echo(environ, start_response):
     status = "200 OK"
-    output = b"Hello World!\n"
+    body = environ["wsgi.input"].read()
     headers = [
         ("Content-Type", "text/plain; charset=utf-8"),
-        ("Content-Length", str(len(output))),
+        ("Content-Length", str(len(body))),
     ]
     start_response(status, headers)
-    return [output]
+    return [body]
 
 
 async def wsgi_middleware():
     async with httpx.AsyncClient(
-        app=WSGIMiddleware(wsgi_hello_world), base_url="http://testserver"
+        app=WSGIMiddleware(wsgi_echo), base_url="http://testserver"
     ) as client:
         start_time = time.time()
         for _ in range(100):
-            await client.get("/")
+            await client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
         for _ in range(100100):
-            await client.get("/")
+            await client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "WSGIMiddleware average duration: ",
@@ -54,15 +57,15 @@ async def wsgi_middleware():
 
 def asgi_middleware():
     with httpx.Client(
-        app=ASGIMiddleware(asgi_hello_world), base_url="http://testserver"
+        app=ASGIMiddleware(asgi_echo), base_url="http://testserver"
     ) as client:
         start_time = time.time()
         for _ in range(100):
-            client.get("/")
+            client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
         for _ in range(100100):
-            client.get("/")
+            client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "ASGIMiddleware average duration: ",
@@ -72,15 +75,15 @@ def asgi_middleware():
 
 async def uvicorn_wsgi_middleware():
     async with httpx.AsyncClient(
-        app=UvicornWSGIMiddleware(wsgi_hello_world), base_url="http://testserver"
+        app=UvicornWSGIMiddleware(wsgi_echo), base_url="http://testserver"
     ) as client:
         start_time = time.time()
         for _ in range(100):
-            await client.get("/")
+            await client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
         for _ in range(100100):
-            await client.get("/")
+            await client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "UvicornWSGIMiddleware average duration: ",
@@ -90,15 +93,15 @@ async def uvicorn_wsgi_middleware():
 
 async def wsgi_to_asgi():
     async with httpx.AsyncClient(
-        app=WsgiToAsgi(wsgi_hello_world), base_url="http://testserver"
+        app=WsgiToAsgi(wsgi_echo), base_url="http://testserver"
     ) as client:
         start_time = time.time()
         for _ in range(100):
-            await client.get("/")
+            await client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
         for _ in range(100100):
-            await client.get("/")
+            await client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "WsgiToAsgi average duration: ",
@@ -107,7 +110,7 @@ async def wsgi_to_asgi():
 
 
 if __name__ == "__main__":
-    asgi_middleware()
     asyncio.run(uvicorn_wsgi_middleware())
     asyncio.run(wsgi_to_asgi())
     asyncio.run(wsgi_middleware())
+    asgi_middleware()
