@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from .types import (
+    Message,
     Scope,
     Receive,
     Send,

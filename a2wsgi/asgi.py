@@ -1,11 +1,11 @@
-import sys
 import asyncio
 import threading
 from enum import Enum
 from http import HTTPStatus
-from typing import Iterable, AnyStr
+from typing import cast, Iterable, Optional
 
 from .types import (
+    ExcInfo,
     Message,
     Scope,
     Environ,
@@ -24,7 +24,7 @@ threading.Thread(
 def build_scope(environ: Environ) -> Scope:
     scope = {
         "type": "http",
-        "asgi": {"version": "2.1", "spec_version": "2.1",},
+        "asgi": {"version": "2.1", "spec_version": "2.1"},
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
         "scheme": environ.get("wsgi.url_scheme", "http"),
@@ -70,7 +70,7 @@ class ASGIMiddleware:
 
     def __call__(
         self, environ: Environ, start_response: StartResponse
-    ) -> Iterable[AnyStr]:
+    ) -> Iterable[bytes]:
         return ASGIResponder(environ, start_response, self.loop)(
             self.app, wait_time=self.wait_time
         )
@@ -93,12 +93,13 @@ class ASGIResponder:
         self.start_response = start_response
         self.loop = loop
         self.sync_event = threading.Event()
-        self.async_event: asyncio.Event = None
-        self.state = None
+        self.async_event: asyncio.Event
+        self.loop.call_soon_threadsafe(self._init_async_event)
+        self.state: Optional[ASGIState] = None
         self.body = bytearray()
         self.more_body = True
-        self.exception = None
-        self.asgi_msg: Message = None
+        self.exception: Optional[ExcInfo] = None
+        self.asgi_msg: Optional[Message] = None
 
     def _done_callback(self, future: asyncio.Future) -> None:
         if future.exception():
@@ -113,12 +114,11 @@ class ASGIResponder:
 
         https://docs.python.org/3/library/asyncio-sync.html#asyncio.Event
         """
-        if self.async_event is None:
+        if not hasattr(self, "async_event"):
             self.async_event = asyncio.Event()
 
-    def __call__(self, app: ASGIApp, wait_time: float) -> Iterable[AnyStr]:
+    def __call__(self, app: ASGIApp, wait_time: float = None) -> Iterable[bytes]:
         scope = build_scope(self.environ)
-        self.loop.call_soon_threadsafe(self._init_async_event)
         run_asgi: asyncio.Task = self.loop.create_task(
             app(scope, self.receive, self.send)
         )
@@ -137,7 +137,7 @@ class ASGIResponder:
                 if read_count >= content_length:
                     self.more_body = False
             elif self.state == ASGIState.SEND:
-                message = self.asgi_msg
+                message = cast(Message, self.asgi_msg)
                 if message["type"] == "http.response.start":
                     status = message["status"]
                     headers = [
@@ -148,7 +148,7 @@ class ASGIResponder:
                         for name, value in message["headers"]
                     ]
                     self.start_response(
-                        f"{status} {HTTPStatus(status).phrase}", headers
+                        f"{status} {HTTPStatus(status).phrase}", headers, None
                     )
                 elif message["type"] == "http.response.body":
                     yield message.get("body", b"")
