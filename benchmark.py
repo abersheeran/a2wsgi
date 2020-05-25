@@ -46,12 +46,12 @@ async def wsgi_middleware():
             await client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
-        for _ in range(100100):
+        for _ in range(10100):
             await client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "WSGIMiddleware average duration: ",
-            (time_count_100100 - time_count_100) / 100000,
+            (time_count_100100 - time_count_100) / 10000,
         )
 
 
@@ -64,12 +64,12 @@ def asgi_middleware():
             client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
-        for _ in range(100100):
+        for _ in range(10100):
             client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "ASGIMiddleware average duration: ",
-            (time_count_100100 - time_count_100) / 100000,
+            (time_count_100100 - time_count_100) / 10000,
         )
 
 
@@ -82,12 +82,12 @@ async def uvicorn_wsgi_middleware():
             await client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
-        for _ in range(100100):
+        for _ in range(10100):
             await client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "UvicornWSGIMiddleware average duration: ",
-            (time_count_100100 - time_count_100) / 100000,
+            (time_count_100100 - time_count_100) / 10000,
         )
 
 
@@ -100,12 +100,12 @@ async def wsgi_to_asgi():
             await client.post("/", data=b"hello world")
         time_count_100 = time.time() - start_time
         start_time = time.time()
-        for _ in range(100100):
+        for _ in range(10100):
             await client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
             "WsgiToAsgi average duration: ",
-            (time_count_100100 - time_count_100) / 100000,
+            (time_count_100100 - time_count_100) / 10000,
         )
 
 
