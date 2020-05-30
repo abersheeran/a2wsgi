@@ -1,6 +1,7 @@
 import time
 import asyncio
 
+import pytest
 import httpx
 from a2wsgi import WSGIMiddleware, ASGIMiddleware
 
@@ -20,10 +21,16 @@ async def asgi_echo(scope, receive, send):
     body = bytes()
     while True:
         message = await receive()
-        body += message.get("body", b"")
         if not message.get("more_body", False):
             break
-    await send({"type": "http.response.body", "body": body})
+        await send(
+            {
+                "type": "http.response.body",
+                "body": message.get("body", b""),
+                "more_body": True,
+            }
+        )
+    await send({"type": "http.response.disconnect"})
 
 
 def wsgi_echo(environ, start_response):
@@ -37,10 +44,17 @@ def wsgi_echo(environ, start_response):
     return [body]
 
 
-async def wsgi_middleware():
-    async with httpx.AsyncClient(
-        app=WSGIMiddleware(wsgi_echo), base_url="http://testserver"
-    ) as client:
+@pytest.mark.parametrize(
+    "app, name",
+    [
+        (WSGIMiddleware(wsgi_echo), "a2wsgi-WSGIMiddleware"),
+        (UvicornWSGIMiddleware(wsgi_echo), "uvicorn-WSGIMiddleware"),
+        (WsgiToAsgi(wsgi_echo), "asgiref-WsgiToAsgi"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_convert_wsgi_to_asgi(app, name):
+    async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
         start_time = time.time()
         for _ in range(100):
             await client.post("/", data=b"hello world")
@@ -50,15 +64,18 @@ async def wsgi_middleware():
             await client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
-            "WSGIMiddleware average duration: ",
+            f"\n{name} average duration: ",
             (time_count_100100 - time_count_100) / 10000,
+            "second",
+            end="",
         )
 
 
-def asgi_middleware():
-    with httpx.Client(
-        app=ASGIMiddleware(asgi_echo), base_url="http://testserver"
-    ) as client:
+@pytest.mark.parametrize(
+    "app, name", [(ASGIMiddleware(asgi_echo), "a2wsgi-ASGIMiddleware"),],
+)
+def test_convert_asgi_to_wsgi(app, name):
+    with httpx.Client(app=app, base_url="http://testserver") as client:
         start_time = time.time()
         for _ in range(100):
             client.post("/", data=b"hello world")
@@ -68,49 +85,8 @@ def asgi_middleware():
             client.post("/", data=b"hello world")
         time_count_100100 = time.time() - start_time
         print(
-            "ASGIMiddleware average duration: ",
+            f"\n{name} average duration: ",
             (time_count_100100 - time_count_100) / 10000,
+            "second",
+            end="",
         )
-
-
-async def uvicorn_wsgi_middleware():
-    async with httpx.AsyncClient(
-        app=UvicornWSGIMiddleware(wsgi_echo), base_url="http://testserver"
-    ) as client:
-        start_time = time.time()
-        for _ in range(100):
-            await client.post("/", data=b"hello world")
-        time_count_100 = time.time() - start_time
-        start_time = time.time()
-        for _ in range(10100):
-            await client.post("/", data=b"hello world")
-        time_count_100100 = time.time() - start_time
-        print(
-            "UvicornWSGIMiddleware average duration: ",
-            (time_count_100100 - time_count_100) / 10000,
-        )
-
-
-async def wsgi_to_asgi():
-    async with httpx.AsyncClient(
-        app=WsgiToAsgi(wsgi_echo), base_url="http://testserver"
-    ) as client:
-        start_time = time.time()
-        for _ in range(100):
-            await client.post("/", data=b"hello world")
-        time_count_100 = time.time() - start_time
-        start_time = time.time()
-        for _ in range(10100):
-            await client.post("/", data=b"hello world")
-        time_count_100100 = time.time() - start_time
-        print(
-            "WsgiToAsgi average duration: ",
-            (time_count_100100 - time_count_100) / 10000,
-        )
-
-
-if __name__ == "__main__":
-    asyncio.run(uvicorn_wsgi_middleware())
-    asyncio.run(wsgi_to_asgi())
-    asyncio.run(wsgi_middleware())
-    asgi_middleware()

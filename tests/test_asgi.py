@@ -67,5 +67,3 @@ def test_asgi_exception():
     with httpx.Client(app=app, base_url="http://testserver") as client:
         with pytest.raises(RuntimeError):
             response = client.get("/")
-            assert response.status_code == 500
-            assert response.text == HTTPStatus(500).description
