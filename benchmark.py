@@ -1,3 +1,6 @@
+"""
+**Need Python3.7+**
+"""
 import time
 import asyncio
 
@@ -7,6 +10,13 @@ from a2wsgi import WSGIMiddleware, ASGIMiddleware
 
 from uvicorn.middleware.wsgi import WSGIMiddleware as UvicornWSGIMiddleware
 from asgiref.wsgi import WsgiToAsgi
+
+try:
+    import uvloop
+
+    uvloop.install()
+except ImportError:
+    pass
 
 
 async def asgi_echo(scope, receive, send):
@@ -21,16 +31,16 @@ async def asgi_echo(scope, receive, send):
     body = bytes()
     while True:
         message = await receive()
-        if not message.get("more_body", False):
-            break
+        more_body = message.get("more_body", False)
         await send(
             {
                 "type": "http.response.body",
                 "body": message.get("body", b""),
-                "more_body": True,
+                "more_body": more_body,
             }
         )
-    await send({"type": "http.response.disconnect"})
+        if not more_body:
+            break
 
 
 def wsgi_echo(environ, start_response):
@@ -44,9 +54,15 @@ def wsgi_echo(environ, start_response):
     return [body]
 
 
+@pytest.fixture(scope="module", autouse=True)
+def print_title():
+    print(f"\n{'Name':^30}", "Average Time", end="", flush=True)
+
+
 @pytest.mark.parametrize(
     "app, name",
     [
+        (asgi_echo, "pure-ASGI"),
         (WSGIMiddleware(wsgi_echo), "a2wsgi-WSGIMiddleware"),
         (UvicornWSGIMiddleware(wsgi_echo), "uvicorn-WSGIMiddleware"),
         (WsgiToAsgi(wsgi_echo), "asgiref-WsgiToAsgi"),
@@ -55,38 +71,37 @@ def wsgi_echo(environ, start_response):
 @pytest.mark.asyncio
 async def test_convert_wsgi_to_asgi(app, name):
     async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
-        start_time = time.time()
+        start_time = time.time_ns()
         for _ in range(100):
             await client.post("/", data=b"hello world")
-        time_count_100 = time.time() - start_time
-        start_time = time.time()
+        time_count_100 = time.time_ns() - start_time
+        start_time = time.time_ns()
         for _ in range(10100):
             await client.post("/", data=b"hello world")
-        time_count_100100 = time.time() - start_time
+        time_count_100100 = time.time_ns() - start_time
         print(
-            f"\n{name} average duration: ",
-            (time_count_100100 - time_count_100) / 10000,
-            "second",
+            f"\n{name:^30}",
+            (time_count_100100 - time_count_100) / 10000 / 10 ** 9,
             end="",
         )
 
 
 @pytest.mark.parametrize(
-    "app, name", [(ASGIMiddleware(asgi_echo), "a2wsgi-ASGIMiddleware"),],
+    "app, name",
+    [(wsgi_echo, "pure-WSGI"), (ASGIMiddleware(asgi_echo), "a2wsgi-ASGIMiddleware"),],
 )
 def test_convert_asgi_to_wsgi(app, name):
     with httpx.Client(app=app, base_url="http://testserver") as client:
-        start_time = time.time()
+        start_time = time.time_ns()
         for _ in range(100):
             client.post("/", data=b"hello world")
-        time_count_100 = time.time() - start_time
-        start_time = time.time()
+        time_count_100 = time.time_ns() - start_time
+        start_time = time.time_ns()
         for _ in range(10100):
             client.post("/", data=b"hello world")
-        time_count_100100 = time.time() - start_time
+        time_count_100100 = time.time_ns() - start_time
         print(
-            f"\n{name} average duration: ",
-            (time_count_100100 - time_count_100) / 10000,
-            "second",
+            f"\n{name:^30}",
+            (time_count_100100 - time_count_100) / 10000 / 10 ** 9,
             end="",
         )
