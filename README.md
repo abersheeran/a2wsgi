@@ -35,3 +35,5 @@ Run `pytest ./benchmark.py -s` to compare the performance of `a2wsgi` and `uvico
 ## Why a2wsgi
 
 The performance of uvicorn-WSGIMiddleware is higher than a2wsgi. However, when dealing with large file uploads, it is easy to cause insufficient memory [uvicorn/issue#371](https://github.com/encode/uvicorn/issues/371). a2wsgi uses synchronous signals and asynchronous signals to regulate the pace of reading data, thus solving this problem.
+
+With the help of `ASGIMiddleware`, you can turn any ASGI program into a WSGI program. This is very effective when deploying starlette, FastAPI, responder, index.py to Serverless.
