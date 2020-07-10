@@ -25,10 +25,10 @@ async def asgi_echo(scope, receive, send):
         {
             "type": "http.response.start",
             "status": 200,
-            "headers": [[b"content-type", b"text/plain"],],
+            "headers": [[b"content-type", b"text/plain"]],
         }
     )
-    body = bytes()
+
     while True:
         message = await receive()
         more_body = message.get("more_body", False)
@@ -72,12 +72,14 @@ def print_title():
 async def test_convert_wsgi_to_asgi(app, name):
     async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
         start_time = time.time_ns()
-        for _ in range(100):
-            await client.post("/", data=b"hello world")
+        await asyncio.gather(
+            *[client.post("/", data=b"hello world") for _ in range(100)]
+        )
         time_count_100 = time.time_ns() - start_time
         start_time = time.time_ns()
-        for _ in range(10100):
-            await client.post("/", data=b"hello world")
+        await asyncio.gather(
+            *[client.post("/", data=b"hello world") for _ in range(10100)]
+        )
         time_count_100100 = time.time_ns() - start_time
         print(
             f"\n{name:^30}",
@@ -88,7 +90,7 @@ async def test_convert_wsgi_to_asgi(app, name):
 
 @pytest.mark.parametrize(
     "app, name",
-    [(wsgi_echo, "pure-WSGI"), (ASGIMiddleware(asgi_echo), "a2wsgi-ASGIMiddleware"),],
+    [(wsgi_echo, "pure-WSGI"), (ASGIMiddleware(asgi_echo), "a2wsgi-ASGIMiddleware")],
 )
 def test_convert_asgi_to_wsgi(app, name):
     with httpx.Client(app=app, base_url="http://testserver") as client:
