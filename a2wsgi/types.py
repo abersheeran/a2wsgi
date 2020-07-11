@@ -6,7 +6,6 @@ from typing import (
     Callable,
     Iterable,
     Tuple,
-    AnyStr,
     Awaitable,
     Optional,
 )
@@ -27,4 +26,4 @@ Environ = MutableMapping[str, Any]
 
 StartResponse = Callable[[str, Iterable[Tuple[str, str]], Optional[ExcInfo]], None]
 
-WSGIApp = Callable[[Environ, StartResponse], Iterable[AnyStr]]
+WSGIApp = Callable[[Environ, StartResponse], Iterable[bytes]]
