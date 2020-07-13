@@ -28,7 +28,7 @@ def build_scope(environ: Environ) -> Scope:
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
         "scheme": environ.get("wsgi.url_scheme", "http"),
-        "path": environ["PATH_INFO"],
+        "path": environ["PATH_INFO"].encode("latin1").decode("utf8"),
         "query_string": environ["QUERY_STRING"].encode("ascii"),
         "root_path": environ.get("SCRIPT_NAME", ""),
         "client": None,
