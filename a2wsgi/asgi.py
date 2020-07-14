@@ -30,7 +30,7 @@ def build_scope(environ: Environ) -> Scope:
         "scheme": environ.get("wsgi.url_scheme", "http"),
         "path": environ["PATH_INFO"].encode("latin1").decode("utf8"),
         "query_string": environ["QUERY_STRING"].encode("ascii"),
-        "root_path": environ.get("SCRIPT_NAME", ""),
+        "root_path": environ.get("SCRIPT_NAME", "").encode("latin1").decode("utf8"),
         "client": None,
         "server": (environ["SERVER_NAME"], int(environ["SERVER_PORT"])),
     }

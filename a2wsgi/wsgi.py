@@ -115,7 +115,7 @@ def build_environ(scope: Scope, body: Body) -> Environ:
     """
     environ = {
         "REQUEST_METHOD": scope["method"],
-        "SCRIPT_NAME": scope.get("root_path", ""),
+        "SCRIPT_NAME": scope.get("root_path", "").encode("utf8").decode("latin1"),
         "PATH_INFO": scope["path"].encode("utf8").decode("latin1"),
         "QUERY_STRING": scope["query_string"].decode("ascii"),
         "SERVER_PROTOCOL": f"HTTP/{scope['http_version']}",
