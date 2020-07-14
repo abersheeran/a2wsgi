@@ -133,7 +133,7 @@ def test_build_environ():
         "http_version": "1.1",
         "method": "GET",
         "scheme": "https",
-        "path": "/",
+        "path": "/中文",
         "query_string": b"a=123&b=456",
         "headers": [
             (b"host", b"www.example.org"),
@@ -152,7 +152,7 @@ def test_build_environ():
         "CONTENT_TYPE": "application/json",
         "HTTP_ACCEPT": "application/json,text/plain",
         "HTTP_HOST": "www.example.org",
-        "PATH_INFO": "/",
+        "PATH_INFO": "/中文".encode("utf8").decode("latin-1"),
         "QUERY_STRING": "a=123&b=456",
         "REMOTE_ADDR": "134.56.78.4",
         "REQUEST_METHOD": "GET",
