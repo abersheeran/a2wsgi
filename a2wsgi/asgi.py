@@ -15,11 +15,6 @@ from .types import (
 
 __all__ = ("ASGIMiddleware",)
 
-global_loop = asyncio.new_event_loop()
-threading.Thread(
-    target=global_loop.run_forever, daemon=True, name="global_loop"
-).start()
-
 
 def build_scope(environ: Environ) -> Scope:
     scope = {
@@ -62,10 +57,17 @@ class ASGIMiddleware:
         self,
         app: ASGIApp,
         wait_time: float = None,
-        loop: asyncio.AbstractEventLoop = global_loop,
+        loop: asyncio.AbstractEventLoop = None,
     ) -> None:
         self.app = app
-        self.loop = loop
+        if loop is None:
+            self.loop = asyncio.new_event_loop()
+            loop_threading = threading.Thread(
+                target=self.loop.run_forever, daemon=True, name="asgi_loop"
+            )
+            loop_threading.start()
+        else:
+            self.loop = loop
         self.wait_time = wait_time
 
     def __call__(
