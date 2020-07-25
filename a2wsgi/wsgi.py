@@ -1,7 +1,6 @@
 import sys
 import typing
 import asyncio
-import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from .types import (
@@ -18,18 +17,11 @@ __all__ = ("WSGIMiddleware",)
 
 
 class Body:
-    def __init__(
-        self, loop: asyncio.AbstractEventLoop, recv_event: asyncio.Event
-    ) -> None:
+    def __init__(self, loop: asyncio.AbstractEventLoop, receive: Receive) -> None:
         self.buffer = bytearray()
         self.loop = loop
-        self.recv_event = recv_event
-        self.sync_recv_event = threading.Event()
+        self.receive = receive
         self._has_more = True
-
-    def feed_eof(self) -> None:
-        self._has_more = False
-        self.sync_recv_event.set()
 
     @property
     def has_more(self) -> bool:
@@ -37,74 +29,55 @@ class Body:
             return True
         return False
 
-    def write(self, data: bytes) -> None:
-        self.buffer.extend(data)
-        self.sync_recv_event.set()
-
-    def _wait_more_data(self) -> None:
-        """
-        block until the data is written this time.
-        """
-        if not self._has_more:
-            return
-        self.loop.call_soon_threadsafe(self.recv_event.set)
-        self.sync_recv_event.wait()
-        self.sync_recv_event.clear()
-
-    def _get_data(self, size: int = 0) -> bytes:
-        """
-        get data from `self.buffer`
-
-        * Call get_data(size) to read data of specified length in buffer
-        * Call get_data(negative) to read all data in buffer
-        """
-
-        while self._has_more and not self.buffer:
-            self._wait_more_data()
-
-        if size < 0:
-            data = self.buffer[:]
-            del self.buffer[:]
-        else:
-            data = self.buffer[:size]
-            del self.buffer[:size]
-        return bytes(data)
+    def _receive_more_data(self) -> bytes:
+        future = asyncio.run_coroutine_threadsafe(self.receive(), loop=self.loop)
+        message = future.result()
+        self._has_more = message.get("more_body", False)
+        return message.get("body", b"")
 
     def read(self, size: int = -1) -> bytes:
-        data = self._get_data(size)
-        while (len(data) < size or size == -1) and self.has_more:
-            data += self._get_data(size - len(data))
-        return data
+        while size == -1 or size > len(self.buffer):
+            data = self._receive_more_data()
+            if not self._has_more:
+                break
+            self.buffer.extend(data)
+        if size == -1:
+            result = bytes(self.buffer)
+            self.buffer.clear()
+        else:
+            result = bytes(self.buffer[:size])
+            del self.buffer[:size]
+        return result
 
     def readline(self, limit: int = -1) -> bytes:
-        data = bytes()
-        while self.has_more:
-            index = self.buffer.find(b"\n")
-            if -1 < index:  # found b"\n"
-                if limit > -1:
-                    return self._get_data(min(index + 1, limit))
-                return self._get_data(index + 1)
+        while True:
+            lf_index = self.buffer.find(b"\n", 0, limit if limit > -1 else None)
+            if lf_index != -1:
+                result = bytes(self.buffer[: lf_index + 1])
+                del self.buffer[: lf_index + 1]
+                return result
+            elif limit != -1:
+                result = bytes(self.buffer[:limit])
+                del self.buffer[:limit]
+                return result
+            if not self._has_more:
+                break
+            self.buffer.extend(self._receive_more_data())
 
-            if -1 < limit < len(self.buffer):
-                return self._get_data(limit)
-
-            _data = self._get_data(-1)
-            data = data + _data
-            limit -= len(_data)
-        return data
+        result = bytes(self.buffer)
+        self.buffer.clear()
+        return result
 
     def readlines(self, hint: int = -1) -> typing.List[bytes]:
         if hint == -1:
-            while self._has_more:
-                self._wait_more_data()
-            raw_data = self._get_data(-1)
+            raw_data = self.read(-1)
             if raw_data[-1] == 10:  # 10 -> b"\n"
                 raw_data = raw_data[:-1]
             bytelist = raw_data.split(b"\n")
             return [line + b"\n" for line in bytelist]
         return [self.readline() for _ in range(hint)]
 
-    def __iter__(self) -> typing.Generator:
+    def __iter__(self) -> typing.Generator[bytes, None, None]:
         while self.has_more:
             yield self.readline()
 
@@ -178,7 +151,6 @@ class WSGIResponder:
         self.app = app
         self.scope = scope
         self.executor = executor
-        self.recv_event = asyncio.Event()
         self.send_event = asyncio.Event()
         self.send_queue = []  # type: typing.List[typing.Optional[Message]]
         self.loop = asyncio.get_event_loop()
@@ -186,13 +158,11 @@ class WSGIResponder:
         self.exc_info = None  # type: typing.Any
 
     async def __call__(self, receive: Receive, send: Send) -> None:
-        body = Body(self.loop, self.recv_event)
+        body = Body(self.loop, receive)
         environ = build_environ(self.scope, body)
         sender = None
-        receiver = None
         try:
             sender = self.loop.create_task(self.sender(send))
-            receiver = self.loop.create_task(self.recevier(receive, body))
             await self.loop.run_in_executor(
                 self.executor, self.wsgi, environ, self.start_response
             )
@@ -206,20 +176,6 @@ class WSGIResponder:
         finally:
             if sender and not sender.done():
                 sender.cancel()  # pragma: no cover
-            if receiver and not receiver.done():
-                receiver.cancel()  # pragma: no cover
-            body.feed_eof()
-
-    async def recevier(self, receive: Receive, body: Body) -> None:
-        more_body = True
-        while more_body:
-            await self.recv_event.wait()
-            self.recv_event.clear()
-            message = await receive()
-            more_body = message.get("more_body", False)
-            if not more_body:
-                body.feed_eof()
-            body.write(message.get("body", b""))
 
     async def sender(self, send: Send) -> None:
         while True:

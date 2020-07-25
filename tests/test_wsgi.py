@@ -1,5 +1,6 @@
 import sys
 import asyncio
+import threading
 
 import httpx
 import pytest
@@ -8,9 +9,13 @@ from a2wsgi.wsgi import WSGIMiddleware, Body, build_environ
 
 
 def test_body():
-    body = Body(asyncio.get_event_loop(), asyncio.Event())
-    body.write(
-        b"""This is a body test.
+    event_loop = asyncio.new_event_loop()
+    threading.Thread(target=event_loop.run_forever, daemon=True).start()
+
+    async def receive():
+        return {
+            "type": "http.request.body",
+            "body": b"""This is a body test.
 Why do this?
 To prevent memory leaks.
 And cancel pre-reading.
@@ -18,9 +23,10 @@ Newline.0
 Newline.1
 Newline.2
 Newline.3
-"""
-    )
-    body.feed_eof()
+""",
+        }
+
+    body = Body(event_loop, receive)
     assert body.readline() == b"This is a body test.\n"
     assert body.readline(6) == b"Why do"
     assert body.readline(20) == b" this?\n"
