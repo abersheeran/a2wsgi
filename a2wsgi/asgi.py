@@ -19,7 +19,7 @@ __all__ = ("ASGIMiddleware",)
 def build_scope(environ: Environ) -> Scope:
     scope = {
         "type": "http",
-        "asgi": {"version": "2.1", "spec_version": "2.1"},
+        "asgi": {"version": "3.0", "spec_version": "3.0"},
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
         "scheme": environ.get("wsgi.url_scheme", "http"),
