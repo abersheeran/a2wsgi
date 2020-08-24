@@ -30,6 +30,8 @@ class Body:
         return False
 
     def _receive_more_data(self) -> bytes:
+        if not self._has_more:
+            return b""
         future = asyncio.run_coroutine_threadsafe(self.receive(), loop=self.loop)
         message = future.result()
         self._has_more = message.get("more_body", False)
@@ -37,10 +39,9 @@ class Body:
 
     def read(self, size: int = -1) -> bytes:
         while size == -1 or size > len(self.buffer):
-            data = self._receive_more_data()
+            self.buffer.extend(self._receive_more_data())
             if not self._has_more:
                 break
-            self.buffer.extend(data)
         if size == -1:
             result = bytes(self.buffer)
             self.buffer.clear()
