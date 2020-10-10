@@ -61,13 +61,12 @@ class ASGIMiddleware:
     ) -> None:
         self.app = app
         if loop is None:
-            self.loop = asyncio.new_event_loop()
+            loop = asyncio.new_event_loop()
             loop_threading = threading.Thread(
-                target=self.loop.run_forever, daemon=True, name="asgi_loop"
+                target=loop.run_forever, daemon=True, name="asgi_loop"
             )
             loop_threading.start()
-        else:
-            self.loop = loop
+        self.loop = loop
         self.wait_time = wait_time
 
     def __call__(
