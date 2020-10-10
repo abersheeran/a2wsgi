@@ -70,6 +70,8 @@ class Body:
         return result
 
     def readlines(self, hint: int = -1) -> typing.List[bytes]:
+        if not self.has_more:
+            return []
         if hint == -1:
             raw_data = self.read(-1)
             if raw_data[-1] == 10:  # 10 -> b"\n"
@@ -140,17 +142,27 @@ class WSGIMiddleware:
         )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        assert scope["type"] == "http"
-        responder = WSGIResponder(self.app, scope, self.executor)
-        await responder(receive, send)
+        if scope["type"] == "http":
+            responder = WSGIResponder(self.app, self.executor)
+            return await responder(scope, receive, send)
+
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1000})
+            return
+
+        if scope["type"] == "lifespan":
+            message = await receive()
+            assert message["type"] == "lifespan.startup"
+            await send({"type": "lifespan.startup.complete"})
+            message = await receive()
+            assert message["type"] == "lifespan.shutdown"
+            await send({"type": "lifespan.shutdown.complete"})
+            return
 
 
 class WSGIResponder:
-    def __init__(
-        self, app: WSGIApp, scope: Scope, executor: ThreadPoolExecutor
-    ) -> None:
+    def __init__(self, app: WSGIApp, executor: ThreadPoolExecutor) -> None:
         self.app = app
-        self.scope = scope
         self.executor = executor
         self.send_event = asyncio.Event()
         self.send_queue = []  # type: typing.List[typing.Optional[Message]]
@@ -158,9 +170,9 @@ class WSGIResponder:
         self.response_started = False
         self.exc_info = None  # type: typing.Any
 
-    async def __call__(self, receive: Receive, send: Send) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         body = Body(self.loop, receive)
-        environ = build_environ(self.scope, body)
+        environ = build_environ(scope, body)
         sender = None
         try:
             sender = self.loop.create_task(self.sender(send))
