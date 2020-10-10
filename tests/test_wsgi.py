@@ -28,7 +28,8 @@ Newline.3
 
     body = Body(event_loop, receive)
     assert body.readline() == b"This is a body test.\n"
-    assert body.readline(6) == b"Why do"
+    assert body.read(4) == b"Why "
+    assert body.readline(2) == b"do"
     assert body.readline(20) == b" this?\n"
 
     assert body.readlines(2) == [
@@ -43,7 +44,12 @@ Newline.3
         b"Newline.2\n",
         b"Newline.3\n",
     ]
+    assert body.readlines() == []
+    assert body.readline() == b""
     assert body.read() == b""
+
+    for line in body:
+        assert False
 
 
 def hello_world(environ, start_response):
@@ -125,7 +131,7 @@ async def test_wsgi_exc_info():
 
     app = WSGIMiddleware(return_exc_info)
     async with httpx.AsyncClient(
-        dispatch=httpx.ASGIDispatch(app, raise_app_exceptions=False),
+        transport=httpx.ASGITransport(app, raise_app_exceptions=False),
         base_url="http://testserver",
     ) as client:
         response = await client.get("/")

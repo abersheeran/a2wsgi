@@ -1,9 +1,7 @@
-from http import HTTPStatus
-
 import httpx
 import pytest
 
-from a2wsgi.asgi import ASGIMiddleware, build_scope
+from a2wsgi.asgi import ASGIMiddleware
 
 
 async def hello_world(scope, receive, send):
@@ -12,7 +10,9 @@ async def hello_world(scope, receive, send):
         {
             "type": "http.response.start",
             "status": 200,
-            "headers": [[b"content-type", b"text/plain"],],
+            "headers": [
+                [b"content-type", b"text/plain"],
+            ],
         }
     )
     await send(
@@ -48,7 +48,7 @@ async def raise_exception(scope, receive, send):
 
 def test_asgi_get():
     app = ASGIMiddleware(hello_world)
-    with httpx.Client(app=app, base_url="http://testserver") as client:
+    with httpx.Client(app=app, base_url="http://testserver:80") as client:
         response = client.get("/")
         assert response.status_code == 200
         assert response.text == "Hello, world!"
@@ -56,7 +56,7 @@ def test_asgi_get():
 
 def test_asgi_post():
     app = ASGIMiddleware(echo_body)
-    with httpx.Client(app=app, base_url="http://testserver") as client:
+    with httpx.Client(app=app, base_url="http://testserver:80") as client:
         response = client.post("/", data="hi boy")
         assert response.status_code == 200
         assert response.text == "hi boy"
@@ -64,6 +64,6 @@ def test_asgi_post():
 
 def test_asgi_exception():
     app = ASGIMiddleware(raise_exception)
-    with httpx.Client(app=app, base_url="http://testserver") as client:
+    with httpx.Client(app=app, base_url="http://testserver:80") as client:
         with pytest.raises(RuntimeError):
-            response = client.get("/")
+            client.get("/")
