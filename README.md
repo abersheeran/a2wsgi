@@ -2,7 +2,7 @@
 
 Convert WSGI app to ASGI app or ASGI app to WSGI app.
 
-Pure Python. No dependencies. High performance.
+Pure Python. No dependencies.
 
 ## Install
 
