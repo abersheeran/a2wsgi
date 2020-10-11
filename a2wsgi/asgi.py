@@ -62,9 +62,7 @@ class ASGIMiddleware:
         self.app = app
         if loop is None:
             loop = asyncio.new_event_loop()
-            loop_threading = threading.Thread(
-                target=loop.run_forever, daemon=True, name="asgi_loop"
-            )
+            loop_threading = threading.Thread(target=loop.run_forever, daemon=True)
             loop_threading.start()
         self.loop = loop
         self.wait_time = wait_time
@@ -72,8 +70,8 @@ class ASGIMiddleware:
     def __call__(
         self, environ: Environ, start_response: StartResponse
     ) -> Iterable[bytes]:
-        return ASGIResponder(environ, start_response, self.loop)(
-            self.app, wait_time=self.wait_time
+        return ASGIResponder(self.loop, self.app, wait_time=self.wait_time)(
+            environ, start_response
         )
 
 
@@ -85,14 +83,11 @@ class ASGIState(Enum):
 
 class ASGIResponder:
     def __init__(
-        self,
-        environ: Environ,
-        start_response: StartResponse,
-        loop: asyncio.AbstractEventLoop,
+        self, loop: asyncio.AbstractEventLoop, app: ASGIApp, wait_time: float = None
     ) -> None:
-        self.environ = environ
-        self.start_response = start_response
         self.loop = loop
+        self.app = app
+        self.wait_time = wait_time
         self.sync_event = threading.Event()
         self.async_event: asyncio.Event
         self.loop.call_soon_threadsafe(self._init_async_event)
@@ -118,14 +113,16 @@ class ASGIResponder:
         if not hasattr(self, "async_event"):
             self.async_event = asyncio.Event()
 
-    def __call__(self, app: ASGIApp, wait_time: float = None) -> Iterable[bytes]:
-        scope = build_scope(self.environ)
+    def __call__(
+        self, environ: Environ, start_response: StartResponse
+    ) -> Iterable[bytes]:
+        scope = build_scope(environ)
         run_asgi: asyncio.Task = self.loop.create_task(
-            app(scope, self.receive, self.send)
+            self.app(scope, self.receive, self.send)
         )
         run_asgi.add_done_callback(self._done_callback)
-        read_count, body = 0, self.environ["wsgi.input"]
-        content_length = int(self.environ.get("CONTENT_LENGTH", 0))
+        read_count, body = 0, environ["wsgi.input"]
+        content_length = int(environ.get("CONTENT_LENGTH", 0))
         self.more_body = content_length > 0
         self.loop.call_soon_threadsafe(lambda: None)  # call loop to run
         while True:  # do while
@@ -135,20 +132,20 @@ class ASGIResponder:
                 data = body.read(min(16384, content_length - read_count))
                 self.body.extend(data)
                 read_count += len(data)
-                if read_count >= content_length:
-                    self.more_body = False
+                self.more_body = read_count < content_length
             elif self.state == ASGIState.SEND:
                 message = cast(Message, self.asgi_msg)
+                self.asgi_msg = None
                 if message["type"] == "http.response.start":
                     status = message["status"]
                     headers = [
                         (
-                            name.strip().decode("latin1").lower(),
+                            name.strip().decode("latin1"),
                             value.strip().decode("latin1"),
                         )
                         for name, value in message["headers"]
                     ]
-                    self.start_response(
+                    start_response(
                         f"{status} {HTTPStatus(status).phrase}", headers, None
                     )
                 elif message["type"] == "http.response.body":
@@ -160,9 +157,8 @@ class ASGIResponder:
                 else:
                     run_asgi.cancel()
                     raise RuntimeError("What's wrong with the ASGI app?")
-                self.asgi_msg = None
             elif self.state == ASGIState.ERROR:
-                self.start_response(
+                start_response(
                     f"{500} {HTTPStatus(500).phrase}",
                     [
                         ("Content-Type", "text/plain; charset=utf-8"),
@@ -172,6 +168,7 @@ class ASGIResponder:
                 )
                 yield str(HTTPStatus(500).description).encode("utf-8")
                 break
+
             if run_asgi.done() and self.state is None:
                 break
             self.state = None
@@ -181,7 +178,7 @@ class ASGIResponder:
         # HTTP response ends, wait for run_asgi's background tasks
         self.loop.call_soon_threadsafe(self.async_event.set)
         if not run_asgi.done():
-            self.sync_event.wait(wait_time)
+            self.sync_event.wait(self.wait_time)
         run_asgi.cancel()
 
     async def receive(self) -> Message:
