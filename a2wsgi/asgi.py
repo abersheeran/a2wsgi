@@ -2,7 +2,7 @@ import asyncio
 import collections
 import threading
 from http import HTTPStatus
-from typing import Any, Iterable
+from typing import Any, Iterable, Deque
 
 from .types import (
     Message,
@@ -16,19 +16,19 @@ __all__ = ("ASGIMiddleware",)
 
 
 class AsyncEvent:
-    def __init__(self, loop: asyncio.AbstractEventLoop = None) -> None:
-        if loop is None:
-            loop = asyncio.get_event_loop()
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
-        self.__waiters = collections.deque()
+        self.__waiters: Deque[asyncio.Future] = collections.deque()
         self.__nowait = False
 
-    def set(self, message: Any) -> None:
-        self.__message = message
+    def _set(self, message: Any) -> None:
         for future in self.__waiters:  # type: asyncio.Future
             if future.done():
                 continue
             future.set_result(message)
+
+    def set(self, message: Any) -> None:
+        self.loop.call_soon_threadsafe(self._set, message)
 
     async def wait(self) -> Any:
         if self.__nowait:
@@ -153,6 +153,8 @@ class ASGIResponder:
         read_count, body = 0, environ["wsgi.input"]
         content_length = int(environ.get("CONTENT_LENGTH", None) or 0)
 
+        self.loop.call_soon_threadsafe(lambda: None)
+
         while True:
             message = self.sync_event.wait()
             message_type = message["type"]
@@ -209,6 +211,7 @@ class ASGIResponder:
         # HTTP response ends, wait for run_asgi's background tasks
         asgi_done.wait(self.wait_time)
         run_asgi.cancel()
+        yield b""
 
     async def receive(self) -> Message:
         self.sync_event.set({"type": "receive"})
