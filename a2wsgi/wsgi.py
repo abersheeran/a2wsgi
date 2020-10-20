@@ -74,9 +74,9 @@ class Body:
             return []
         if hint == -1:
             raw_data = self.read(-1)
-            if raw_data[-1] == 10:  # 10 -> b"\n"
-                raw_data = raw_data[:-1]
             bytelist = raw_data.split(b"\n")
+            if raw_data[-1] == 10:  # 10 -> b"\n"
+                bytelist.pop(len(bytelist) - 1)
             return [line + b"\n" for line in bytelist]
         return [self.readline() for _ in range(hint)]
 
