@@ -77,6 +77,17 @@ def test_asgi_exception():
             client.get("/")
 
 
+def test_asgi_exception_info():
+    app = ASGIMiddleware(raise_exception)
+    with httpx.Client(
+        transport=httpx.WSGITransport(app, raise_app_exceptions=False),
+        base_url="http://testserver:80",
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 500
+        assert response.text == "Server got itself in trouble"
+
+
 def test_background_app():
     executor = concurrent.futures.ThreadPoolExecutor()
 
