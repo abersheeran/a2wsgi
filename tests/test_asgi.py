@@ -1,3 +1,6 @@
+import asyncio
+import concurrent
+
 import httpx
 import pytest
 
@@ -46,6 +49,11 @@ async def raise_exception(scope, receive, send):
     raise RuntimeError("Something went wrong")
 
 
+async def background_tasks(scope, receive, send):
+    await hello_world(scope, receive, send)
+    await asyncio.sleep(10)
+
+
 def test_asgi_get():
     app = ASGIMiddleware(hello_world)
     with httpx.Client(app=app, base_url="http://testserver:80") as client:
@@ -67,3 +75,33 @@ def test_asgi_exception():
     with httpx.Client(app=app, base_url="http://testserver:80") as client:
         with pytest.raises(RuntimeError):
             client.get("/")
+
+
+def test_background_app():
+    executor = concurrent.futures.ThreadPoolExecutor()
+
+    def _():
+        app = ASGIMiddleware(background_tasks)
+        with httpx.Client(app=app, base_url="http://testserver:80") as client:
+            response = client.get("/")
+            assert response.status_code == 200
+            assert response.text == "Hello, world!"
+
+    future = executor.submit(_)
+    with pytest.raises(concurrent.futures.TimeoutError):
+        future.result(1)
+    future.cancel()
+
+
+def test_background_app_wait_time():
+    executor = concurrent.futures.ThreadPoolExecutor()
+
+    def _():
+        app = ASGIMiddleware(background_tasks, wait_time=1)
+        with httpx.Client(app=app, base_url="http://testserver:80") as client:
+            response = client.get("/")
+            assert response.status_code == 200
+            assert response.text == "Hello, world!"
+
+    future = executor.submit(_)
+    future.result(2)
