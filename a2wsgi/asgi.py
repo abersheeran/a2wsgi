@@ -85,7 +85,7 @@ def build_scope(environ: Environ) -> Scope:
         "path": environ["PATH_INFO"].encode("latin1").decode("utf8"),
         "query_string": environ["QUERY_STRING"].encode("ascii"),
         "root_path": environ.get("SCRIPT_NAME", "").encode("latin1").decode("utf8"),
-        "client": None,
+        "client": (environ.get("REMOTE_ADDR"), environ.get("REMOTE_PORT")),
         "server": (environ["SERVER_NAME"], int(environ["SERVER_PORT"])),
         "headers": headers,
     }
