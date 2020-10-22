@@ -39,5 +39,4 @@ Run `pytest ./benchmark.py -s` to compare the performance of `a2wsgi` and `uvico
 The uvicorn-WSGIMiddleware dealing with large file uploads, it is easy to cause insufficient memory [uvicorn/issue#371](https://github.com/encode/uvicorn/issues/371). a2wsgi uses `asyncio.run_coroutine_threadsafe` to regulate the pace of reading data, thus solving this problem.
 
 ### Convert ASGI app to WSGI app
-
-The HTTP trigger of Alibaba Cloud Serverless supports the WSGI interface but not the ASGI interface, which is very useful for deploying starlette/index.py to such services.
+There is a lot of support for WSGI. Converting ASGI to WSGI, you will be able to use many existing services to deploy ASGI applications.
