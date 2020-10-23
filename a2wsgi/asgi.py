@@ -76,6 +76,9 @@ def build_scope(environ: Environ) -> Scope:
     if environ.get("CONTENT_LENGTH"):
         headers.append((b"content-length", environ["CONTENT_LENGTH"].encode("latin1")))
 
+    if environ.get("REMOTE_ADDR") and environ.get("REMOTE_PORT"):
+        client = (environ.get("REMOTE_ADDR"), int(environ.get("REMOTE_PORT")))
+
     return {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "3.0"},
@@ -85,7 +88,7 @@ def build_scope(environ: Environ) -> Scope:
         "path": environ["PATH_INFO"].encode("latin1").decode("utf8"),
         "query_string": environ["QUERY_STRING"].encode("ascii"),
         "root_path": environ.get("SCRIPT_NAME", "").encode("latin1").decode("utf8"),
-        "client": (environ.get("REMOTE_ADDR"), int(environ.get("REMOTE_PORT"))),
+        "client": client,
         "server": (environ["SERVER_NAME"], int(environ["SERVER_PORT"])),
         "headers": headers,
     }
