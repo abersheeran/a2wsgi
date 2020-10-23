@@ -78,6 +78,8 @@ def build_scope(environ: Environ) -> Scope:
 
     if environ.get("REMOTE_ADDR") and environ.get("REMOTE_PORT"):
         client = (environ.get("REMOTE_ADDR"), int(environ.get("REMOTE_PORT")))
+    else:
+        client = None
 
     return {
         "type": "http",
