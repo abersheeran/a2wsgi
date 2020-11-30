@@ -16,3 +16,6 @@ exclude_lines =
     # Don't complain if non-runnable code isn't run:
     if False:
     assert False
+
+show_missing = true
+skip_covered = true
