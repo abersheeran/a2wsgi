@@ -24,7 +24,7 @@ python = "^3.6"
 asgiref = "^3.2.7" # benchmark
 black = {version = "*", allow-prereleases = true}
 flake8 = "*"
-httpx = {version = "^0.15", allow-prereleases = true}
+httpx = {version = "^0.16", allow-prereleases = true}
 mypy = "^*"
 pytest = "^5.4.1"
 pytest-asyncio = "^0.11.0"
