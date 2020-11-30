@@ -197,23 +197,18 @@ class ASGIResponder:
                 self.async_event.set(None)
                 break
             elif message_type == "error":
-                try:
-                    raise message["exception"][0].with_traceback(
-                        message["exception"][1], message["exception"][2]
-                    )
-                except message["exception"][0]:
-                    start_response(
-                        f"{500} {HTTPStatus(500).phrase}",
-                        [
-                            ("Content-Type", "text/plain; charset=utf-8"),
-                            ("Content-Length", str(len(HTTPStatus(500).description))),
-                        ],
-                        message["exception"],
-                    )
-                    yield str(HTTPStatus(500).description).encode("utf-8")
-                    self.async_event.set_nowait()
-                    self.async_event.set(None)
-                    break
+                start_response(
+                    f"{500} {HTTPStatus(500).phrase}",
+                    [
+                        ("Content-Type", "text/plain; charset=utf-8"),
+                        ("Content-Length", str(len(HTTPStatus(500).description))),
+                    ],
+                    message["exception"],
+                )
+                yield str(HTTPStatus(500).description).encode("utf-8")
+                self.async_event.set_nowait()
+                self.async_event.set(None)
+                break
 
             if run_asgi.done():
                 break
