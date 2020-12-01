@@ -48,17 +48,22 @@ class AsyncEvent:
 
 class SyncEvent:
     def __init__(self) -> None:
-        self.__event = threading.Event()
+        self.__write_event = threading.Event()
+        self.__read_event = threading.Event()
+        self.__read_event.set()
         self.__message: Any = None
 
     def set(self, message: Any) -> None:
+        self.__read_event.wait()
+        self.__read_event.clear()
         self.__message = message
-        self.__event.set()
+        self.__write_event.set()
 
     def wait(self) -> Any:
-        self.__event.wait()
-        self.__event.clear()
+        self.__write_event.wait()
+        self.__write_event.clear()
         message, self.__message = self.__message, None
+        self.__read_event.set()
         return message
 
 
