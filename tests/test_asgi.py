@@ -54,6 +54,40 @@ async def background_tasks(scope, receive, send):
     await asyncio.sleep(10)
 
 
+async def concurrent_rw(scope, receive, send):
+    async def listen_for_disconnect() -> None:
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                break
+
+    async def stream_response() -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [],
+            }
+        )
+        for chunk in range(10):
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": chunk.to_bytes(4, "big"),
+                    "more_body": True,
+                }
+            )
+
+        await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    done, pending = await asyncio.wait(
+        [listen_for_disconnect(), stream_response()],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+    [task.cancel() for task in pending]
+    [task.result() for task in done]
+
+
 def test_asgi_get():
     app = ASGIMiddleware(hello_world)
     with httpx.Client(app=app, base_url="http://testserver:80") as client:
@@ -116,3 +150,11 @@ def test_background_app_wait_time():
 
     future = executor.submit(_)
     future.result(2)
+
+
+def test_concurrent_rw():
+    app = ASGIMiddleware(concurrent_rw)
+
+    with httpx.Client(app=app, base_url="http://testserver:80") as client:
+        response = client.get("/")
+        assert response.status_code == 200
