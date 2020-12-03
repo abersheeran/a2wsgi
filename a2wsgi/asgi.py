@@ -49,13 +49,9 @@ class AsyncEvent:
 class SyncEvent:
     def __init__(self) -> None:
         self.__write_event = threading.Event()
-        self.__read_event = threading.Event()
-        self.__read_event.set()
         self.__message: Any = None
 
     def set(self, message: Any) -> None:
-        self.__read_event.wait()
-        self.__read_event.clear()
         self.__message = message
         self.__write_event.set()
 
@@ -63,7 +59,6 @@ class SyncEvent:
         self.__write_event.wait()
         self.__write_event.clear()
         message, self.__message = self.__message, None
-        self.__read_event.set()
         return message
 
 
@@ -141,11 +136,17 @@ class ASGIResponder:
         self.sync_event = SyncEvent()
         self.async_event = AsyncEvent(loop)
 
+        loop.call_soon_threadsafe(self._init_asgi_lock)
+
+    def _init_asgi_lock(self) -> None:
+        self.async_lock = asyncio.Lock()
+
     def __call__(
         self, environ: Environ, start_response: StartResponse
     ) -> Iterable[bytes]:
 
         asgi_done = threading.Event()
+        wsgi_should_stop = False
 
         def _done_callback(future: asyncio.Future) -> None:
             if future.exception() is not None:
@@ -156,7 +157,7 @@ class ASGIResponder:
             asgi_done.set()
 
         run_asgi: asyncio.Task = self.loop.create_task(
-            self.app(build_scope(environ), self.receive, self.send)
+            self.app(build_scope(environ), self.asgi_receive, self.asgi_send)
         )
         run_asgi.add_done_callback(_done_callback)
 
@@ -165,7 +166,7 @@ class ASGIResponder:
 
         self.loop.call_soon_threadsafe(lambda: None)
 
-        while True:
+        while not wsgi_should_stop:
             message = self.sync_event.wait()
             message_type = message["type"]
             if message_type == "receive":
@@ -188,19 +189,12 @@ class ASGIResponder:
                     for name, value in message["headers"]
                 ]
                 start_response(f"{status} {HTTPStatus(status).phrase}", headers, None)
-                self.async_event.set(None)
             elif message_type == "http.response.body":
                 yield message.get("body", b"")
                 more_body = message.get("more_body", False)
-                if not more_body:
-                    self.async_event.set_nowait()
-                self.async_event.set(None)
-                if not more_body:
-                    break
+                wsgi_should_stop = not more_body
             elif message_type == "http.response.disconnect":
-                self.async_event.set_nowait()
-                self.async_event.set(None)
-                break
+                wsgi_should_stop = True
             elif message_type == "error":
                 start_response(
                     f"{500} {HTTPStatus(500).phrase}",
@@ -211,9 +205,11 @@ class ASGIResponder:
                     message["exception"],
                 )
                 yield str(HTTPStatus(500).description).encode("utf-8")
+                wsgi_should_stop = True
+
+            if wsgi_should_stop:
                 self.async_event.set_nowait()
-                self.async_event.set(None)
-                break
+            self.async_event.set(None)
 
             if run_asgi.done():
                 break
@@ -223,10 +219,12 @@ class ASGIResponder:
         run_asgi.cancel()
         yield b""
 
-    async def receive(self) -> Message:
-        self.sync_event.set({"type": "receive"})
-        return await self.async_event.wait()
+    async def asgi_receive(self) -> Message:
+        async with self.async_lock:
+            self.sync_event.set({"type": "receive"})
+            return await self.async_event.wait()
 
-    async def send(self, message: Message) -> None:
-        self.sync_event.set(message)
-        await self.async_event.wait()
+    async def asgi_send(self, message: Message) -> None:
+        async with self.async_lock:
+            self.sync_event.set(message)
+            await self.async_event.wait()
