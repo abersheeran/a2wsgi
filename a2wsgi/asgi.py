@@ -81,17 +81,29 @@ def build_scope(environ: Environ) -> Scope:
     else:
         client = None
 
+    scheme = environ.get("wsgi.url_scheme", "http")
+
+    if environ["SERVER_PORT"] == "None":
+        if scheme == "http":
+            port = 80
+        elif scheme == "https":
+            port = 443
+        else:
+            port = 80
+    else:
+        port = int(environ["SERVER_PORT"])
+
     return {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "3.0"},
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
-        "scheme": environ.get("wsgi.url_scheme", "http"),
+        "scheme": scheme,
         "path": environ["PATH_INFO"].encode("latin1").decode("utf8"),
         "query_string": environ["QUERY_STRING"].encode("ascii"),
         "root_path": environ.get("SCRIPT_NAME", "").encode("latin1").decode("utf8"),
         "client": client,
-        "server": (environ["SERVER_NAME"], int(environ["SERVER_PORT"])),
+        "server": (environ["SERVER_NAME"], port),
         "headers": headers,
     }
 
