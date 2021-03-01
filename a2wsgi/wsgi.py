@@ -1,17 +1,9 @@
+import asyncio
 import sys
 import typing
-import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
-from .types import (
-    Message,
-    Scope,
-    Receive,
-    Send,
-    Environ,
-    StartResponse,
-    WSGIApp,
-)
+from .types import Environ, Message, Receive, Scope, Send, StartResponse, WSGIApp
 
 __all__ = ("WSGIMiddleware",)
 

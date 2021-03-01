@@ -1,15 +1,15 @@
 """
 **Need Python3.7+**
 """
-import time
 import asyncio
+import time
 
-import pytest
 import httpx
-from a2wsgi import WSGIMiddleware, ASGIMiddleware
-
-from uvicorn.middleware.wsgi import WSGIMiddleware as UvicornWSGIMiddleware
+import pytest
 from asgiref.wsgi import WsgiToAsgi
+from uvicorn.middleware.wsgi import WSGIMiddleware as UvicornWSGIMiddleware
+
+from a2wsgi import ASGIMiddleware, WSGIMiddleware
 
 try:
     import uvloop

@@ -3,15 +3,9 @@ import collections
 import threading
 from http import HTTPStatus
 from itertools import chain
-from typing import Any, Iterable, Deque
+from typing import Any, Deque, Iterable
 
-from .types import (
-    Message,
-    Scope,
-    Environ,
-    StartResponse,
-    ASGIApp,
-)
+from .types import ASGIApp, Environ, Message, Scope, StartResponse
 
 __all__ = ("ASGIMiddleware",)
 

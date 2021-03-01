@@ -1,13 +1,13 @@
 from types import TracebackType
 from typing import (
-    Type,
     Any,
-    MutableMapping,
+    Awaitable,
     Callable,
     Iterable,
-    Tuple,
-    Awaitable,
+    MutableMapping,
     Optional,
+    Tuple,
+    Type,
 )
 
 ExcInfo = Tuple[Type[BaseException], BaseException, Optional[TracebackType]]

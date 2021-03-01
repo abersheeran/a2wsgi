@@ -1,7 +1,7 @@
-from .wsgi import WSGIMiddleware
 from .asgi import ASGIMiddleware
+from .wsgi import WSGIMiddleware
 
-VERSION = (1, 3, 1)
+VERSION = (1, 4, 0)
 
 __version__: str = ".".join(map(str, VERSION))
 

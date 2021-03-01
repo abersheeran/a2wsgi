@@ -1,11 +1,11 @@
-import sys
 import asyncio
+import sys
 import threading
 
 import httpx
 import pytest
 
-from a2wsgi.wsgi import WSGIMiddleware, Body, build_environ
+from a2wsgi.wsgi import Body, WSGIMiddleware, build_environ
 
 
 def test_body():
