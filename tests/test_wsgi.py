@@ -159,6 +159,7 @@ def test_build_environ():
     }
     environ = build_environ(scope, Body(asyncio.get_event_loop(), asyncio.Event()))
     environ.pop("wsgi.input")
+    environ.pop("asgi.scope")
     assert environ == {
         "CONTENT_LENGTH": "18",
         "CONTENT_TYPE": "application/json",

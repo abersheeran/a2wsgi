@@ -82,6 +82,7 @@ def build_scope(environ: Environ) -> Scope:
         client = None
 
     return {
+        "wsgi_environ": environ,
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "3.0"},
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],

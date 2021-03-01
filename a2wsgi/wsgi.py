@@ -90,6 +90,7 @@ def build_environ(scope: Scope, body: Body) -> Environ:
     Builds a scope and request body into a WSGI environ object.
     """
     environ = {
+        "asgi.scope": scope,
         "REQUEST_METHOD": scope["method"],
         "SCRIPT_NAME": scope.get("root_path", "").encode("utf8").decode("latin1"),
         "PATH_INFO": scope["path"].encode("utf8").decode("latin1"),
