@@ -2,6 +2,7 @@ import asyncio
 import collections
 import threading
 from http import HTTPStatus
+from itertools import chain
 from typing import Any, Iterable, Deque
 
 from .types import (
@@ -22,9 +23,7 @@ class AsyncEvent:
         self.__nowait = False
 
     def _set(self, message: Any) -> None:
-        for future in self.__waiters:  # type: asyncio.Future
-            if future.done():
-                continue
+        for future in filter(lambda f: not f.done(), self.__waiters):
             future.set_result(message)
 
     def set(self, message: Any) -> None:
@@ -64,20 +63,23 @@ class SyncEvent:
 
 def build_scope(environ: Environ) -> Scope:
     headers = [
-        (
-            each[5:].lower().replace("_", "-").encode("latin1"),
-            environ[each].encode("latin1"),
+        (key.lower().replace("_", "-").encode("latin-1"), value.encode("latin-1"))
+        for key, value in chain(
+            (
+                (key[5:], value)
+                for key, value in environ.items()
+                if key.startswith("HTTP_")
+            ),
+            (
+                (key, value)
+                for key, value in environ.items()
+                if key in ("CONTENT_TYPE", "CONTENT_LENGTH")
+            ),
         )
-        for each in environ.keys()
-        if each.startswith("HTTP_")
     ]
-    if environ.get("CONTENT_TYPE"):
-        headers.append((b"content-type", environ["CONTENT_TYPE"].encode("latin1")))
-    if environ.get("CONTENT_LENGTH"):
-        headers.append((b"content-length", environ["CONTENT_LENGTH"].encode("latin1")))
 
     if environ.get("REMOTE_ADDR") and environ.get("REMOTE_PORT"):
-        client = (environ.get("REMOTE_ADDR"), int(environ.get("REMOTE_PORT")))
+        client = (environ["REMOTE_ADDR"], int(environ["REMOTE_PORT"]))
     else:
         client = None
 
@@ -170,17 +172,8 @@ class ASGIResponder:
         while not wsgi_should_stop:
             message = self.sync_event.wait()
             message_type = message["type"]
-            if message_type == "receive":
-                data = body.read(min(16384, content_length - read_count))
-                read_count += len(data)
-                self.async_event.set(
-                    {
-                        "type": "http.request",
-                        "body": data,
-                        "more_body": read_count < content_length,
-                    }
-                )
-            elif message_type == "http.response.start":
+
+            if message_type == "http.response.start":
                 status = message["status"]
                 headers = [
                     (
@@ -192,8 +185,7 @@ class ASGIResponder:
                 start_response(f"{status} {HTTPStatus(status).phrase}", headers, None)
             elif message_type == "http.response.body":
                 yield message.get("body", b"")
-                more_body = message.get("more_body", False)
-                wsgi_should_stop = not more_body
+                wsgi_should_stop = not message.get("more_body", False)
             elif message_type == "http.response.disconnect":
                 wsgi_should_stop = True
             elif message_type == "error":
@@ -208,9 +200,21 @@ class ASGIResponder:
                 yield str(HTTPStatus(500).description).encode("utf-8")
                 wsgi_should_stop = True
 
+            if message_type == "receive":
+                data = body.read(min(4096, content_length - read_count))
+                read_count += len(data)
+                self.async_event.set(
+                    {
+                        "type": "http.request",
+                        "body": data,
+                        "more_body": read_count < content_length,
+                    }
+                )
+            else:
+                self.async_event.set(None)
+
             if wsgi_should_stop:
                 self.async_event.set_nowait()
-            self.async_event.set(None)
 
             if run_asgi.done():
                 break
