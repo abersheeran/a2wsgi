@@ -63,6 +63,7 @@ def build_scope(environ: Environ) -> Scope:
                 (key[5:], value)
                 for key, value in environ.items()
                 if key.startswith("HTTP_")
+                and key not in ("HTTP_CONTENT_TYPE", "HTTP_CONTENT_LENGTH")
             ),
             (
                 (key, value)
