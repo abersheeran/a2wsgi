@@ -1,10 +1,11 @@
 import asyncio
 import concurrent
+from collections import Counter
 
 import httpx
 import pytest
 
-from a2wsgi.asgi import ASGIMiddleware
+from a2wsgi.asgi import ASGIMiddleware, build_scope
 
 
 async def hello_world(scope, receive, send):
@@ -158,3 +159,23 @@ def test_concurrent_rw():
     with httpx.Client(app=app, base_url="http://testserver:80") as client:
         response = client.get("/")
         assert response.status_code == 200
+
+
+def test_http_content_headers():
+    content_type = "application/json"
+    content_length = "5"
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "QUERY_STRING": "",
+        "PATH_INFO": "/foo",
+        "SERVER_NAME": "foo.invalid",
+        "SERVER_PORT": "80",
+        "CONTENT_TYPE": content_type,
+        "HTTP_CONTENT_TYPE": content_type,
+        "CONTENT_LENGTH": content_length,
+        "HTTP_CONTENT_LENGTH": content_length
+    }
+    scope = build_scope(environ)
+    counter = Counter(scope["headers"])
+    assert counter[(b"content-type", content_type.encode())] == 1
+    assert counter[(b"content-length", content_length.encode())] == 1
