@@ -10,6 +10,21 @@ from .types import ASGIApp, Environ, Message, Scope, StartResponse
 __all__ = ("ASGIMiddleware",)
 
 
+class defaultdict(dict):
+    def __init__(self, default_factory, *args, **kwargs) -> None:
+        self.default_factory = default_factory
+        super().__init__(*args, **kwargs)
+
+    def __missing__(self, key):
+        return self.default_factory(key)
+
+
+StatusStringMapping = defaultdict(
+    lambda status: f"{status} Unknown Status Code",
+    {int(status): f"{status} {status.phrase}" for status in HTTPStatus},
+)
+
+
 class AsyncEvent:
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
@@ -177,7 +192,7 @@ class ASGIResponder:
                     )
                     for name, value in message["headers"]
                 ]
-                start_response(f"{status} {HTTPStatus(status).phrase}", headers, None)
+                start_response(StatusStringMapping[status], headers, None)
             elif message_type == "http.response.body":
                 yield message.get("body", b"")
                 wsgi_should_stop = not message.get("more_body", False)
