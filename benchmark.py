@@ -73,12 +73,12 @@ async def test_convert_wsgi_to_asgi(app, name):
     async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
         start_time = time.time_ns()
         await asyncio.gather(
-            *[client.post("/", data=b"hello world") for _ in range(100)]
+            *[client.post("/", content=b"hello world") for _ in range(100)]
         )
         time_count_100 = time.time_ns() - start_time
         start_time = time.time_ns()
         await asyncio.gather(
-            *[client.post("/", data=b"hello world") for _ in range(10100)]
+            *[client.post("/", content=b"hello world") for _ in range(10100)]
         )
         time_count_100100 = time.time_ns() - start_time
         print(
@@ -96,11 +96,11 @@ def test_convert_asgi_to_wsgi(app, name):
     with httpx.Client(app=app, base_url="http://testserver") as client:
         start_time = time.time_ns()
         for _ in range(100):
-            client.post("/", data=b"hello world")
+            client.post("/", content=b"hello world")
         time_count_100 = time.time_ns() - start_time
         start_time = time.time_ns()
         for _ in range(10100):
-            client.post("/", data=b"hello world")
+            client.post("/", content=b"hello world")
         time_count_100100 = time.time_ns() - start_time
         print(
             f"\n{name:^30}",
