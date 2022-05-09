@@ -95,7 +95,7 @@ def build_environ(scope: Scope, body: Body) -> Environ:
     for key in allow_rewrite_environ.keys():
         environ_var = os.environ.get(key, "")
         if environ_var:
-            allow_rewrite_environ[key] = environ_var
+            allow_rewrite_environ[key] = unicode_to_wsgi(environ_var)
     environ = {
         **allow_rewrite_environ,
         "asgi.scope": scope,
