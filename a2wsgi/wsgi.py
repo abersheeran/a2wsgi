@@ -77,14 +77,26 @@ class Body:
             yield self.readline()
 
 
+ENC, ESC = sys.getfilesystemencoding(), "surrogateescape"
+
+
+def unicode_to_wsgi(u):
+    """Convert an environment variable to a WSGI "bytes-as-unicode" string"""
+    return u.encode(ENC, ESC).decode("iso-8859-1")
+
+
 def build_environ(scope: Scope, body: Body) -> Environ:
     """
     Builds a scope and request body into a WSGI environ object.
     """
+    allow_rewrite_environ = {
+        "SCRIPT_NAME": scope.get("root_path", "").encode("utf8").decode("latin1"),
+        **{k: unicode_to_wsgi(v) for k, v in os.environ.items()},
+    }
     environ = {
+        **allow_rewrite_environ,
         "asgi.scope": scope,
         "REQUEST_METHOD": scope["method"],
-        "SCRIPT_NAME": scope.get("root_path", "").encode("utf8").decode("latin1"),
         "PATH_INFO": scope["path"].encode("utf8").decode("latin1"),
         "QUERY_STRING": scope["query_string"].decode("ascii"),
         "SERVER_PROTOCOL": f"HTTP/{scope['http_version']}",
