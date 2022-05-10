@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 import threading
 
@@ -170,6 +171,51 @@ def test_build_environ():
         "REMOTE_ADDR": "134.56.78.4",
         "REQUEST_METHOD": "GET",
         "SCRIPT_NAME": "",
+        "SERVER_NAME": "www.example.org",
+        "SERVER_PORT": 443,
+        "SERVER_PROTOCOL": "HTTP/1.1",
+        "wsgi.errors": sys.stdout,
+        "wsgi.multiprocess": True,
+        "wsgi.multithread": True,
+        "wsgi.run_once": False,
+        "wsgi.url_scheme": "https",
+        "wsgi.version": (1, 0),
+    }
+
+
+def test_build_environ_with_env():
+    os.environ["SCRIPT_NAME"] = "/urlprefix"
+
+    scope = {
+        "type": "http",
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "https",
+        "path": "/中文",
+        "query_string": b"a=123&b=456",
+        "headers": [
+            (b"host", b"www.example.org"),
+            (b"content-type", b"application/json"),
+            (b"content-length", b"18"),
+            (b"accept", b"application/json"),
+            (b"accept", b"text/plain"),
+        ],
+        "client": ("134.56.78.4", 1453),
+        "server": ("www.example.org", 443),
+    }
+    environ = build_environ(scope, Body(asyncio.get_event_loop(), asyncio.Event()))
+    environ.pop("wsgi.input")
+    environ.pop("asgi.scope")
+    assert environ == {
+        "CONTENT_LENGTH": "18",
+        "CONTENT_TYPE": "application/json",
+        "HTTP_ACCEPT": "application/json,text/plain",
+        "HTTP_HOST": "www.example.org",
+        "PATH_INFO": "/中文".encode("utf8").decode("latin-1"),
+        "QUERY_STRING": "a=123&b=456",
+        "REMOTE_ADDR": "134.56.78.4",
+        "REQUEST_METHOD": "GET",
+        "SCRIPT_NAME": "/urlprefix",
         "SERVER_NAME": "www.example.org",
         "SERVER_PORT": 443,
         "SERVER_PROTOCOL": "HTTP/1.1",
