@@ -1,5 +1,6 @@
 import asyncio
 import collections
+from io import StringIO
 import threading
 from http import HTTPStatus
 from itertools import chain
@@ -174,7 +175,7 @@ class ASGIResponder:
         )
         run_asgi.add_done_callback(_done_callback)
 
-        read_count, body = 0, environ["wsgi.input"]
+        read_count, body = 0, environ.get("wsgi.input", StringIO())
         content_length = int(environ.get("CONTENT_LENGTH", None) or 0)
 
         self.loop.call_soon_threadsafe(lambda: None)
