@@ -2,6 +2,7 @@ import asyncio
 import collections
 import threading
 from http import HTTPStatus
+from io import BytesIO
 from itertools import chain
 from typing import Any, Deque, Iterable
 
@@ -174,7 +175,7 @@ class ASGIResponder:
         )
         run_asgi.add_done_callback(_done_callback)
 
-        read_count, body = 0, environ["wsgi.input"]
+        read_count, body = 0, environ["wsgi.input"] or BytesIO()
         content_length = int(environ.get("CONTENT_LENGTH", None) or 0)
 
         self.loop.call_soon_threadsafe(lambda: None)
