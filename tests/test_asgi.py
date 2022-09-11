@@ -1,5 +1,5 @@
 import asyncio
-import concurrent
+import concurrent.futures
 from collections import Counter
 
 import httpx
@@ -82,7 +82,10 @@ async def concurrent_rw(scope, receive, send):
         await send({"type": "http.response.body", "body": b"", "more_body": False})
 
     done, pending = await asyncio.wait(
-        [listen_for_disconnect(), stream_response()],
+        [
+            asyncio.create_task(listen_for_disconnect()),
+            asyncio.create_task(stream_response()),
+        ],
         return_when=asyncio.FIRST_COMPLETED,
     )
     [task.cancel() for task in pending]
@@ -100,7 +103,7 @@ def test_asgi_get():
 def test_asgi_post():
     app = ASGIMiddleware(echo_body)
     with httpx.Client(app=app, base_url="http://testserver:80") as client:
-        response = client.post("/", data="hi boy")
+        response = client.post("/", content="hi boy")
         assert response.status_code == 200
         assert response.text == "hi boy"
 
@@ -173,7 +176,7 @@ def test_http_content_headers():
         "CONTENT_TYPE": content_type,
         "HTTP_CONTENT_TYPE": content_type,
         "CONTENT_LENGTH": content_length,
-        "HTTP_CONTENT_LENGTH": content_length
+        "HTTP_CONTENT_LENGTH": content_length,
     }
     scope = build_scope(environ)
     counter = Counter(scope["headers"])

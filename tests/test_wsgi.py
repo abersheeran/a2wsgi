@@ -140,7 +140,8 @@ async def test_wsgi_exc_info():
         assert response.text == "Internal Server Error"
 
 
-def test_build_environ():
+@pytest.mark.asyncio
+async def test_build_environ():
     scope = {
         "type": "http",
         "http_version": "1.1",
@@ -158,7 +159,11 @@ def test_build_environ():
         "client": ("134.56.78.4", 1453),
         "server": ("www.example.org", 443),
     }
-    environ = build_environ(scope, Body(asyncio.get_event_loop(), asyncio.Event()))
+
+    async def receive():
+        raise NotImplementedError
+
+    environ = build_environ(scope, Body(asyncio.get_event_loop(), receive))
     environ.pop("wsgi.input")
     environ.pop("asgi.scope")
     assert environ == {
@@ -183,7 +188,8 @@ def test_build_environ():
     }
 
 
-def test_build_environ_with_env():
+@pytest.mark.asyncio
+async def test_build_environ_with_env():
     os.environ["SCRIPT_NAME"] = "/urlprefix"
 
     scope = {
@@ -203,7 +209,11 @@ def test_build_environ_with_env():
         "client": ("134.56.78.4", 1453),
         "server": ("www.example.org", 443),
     }
-    environ = build_environ(scope, Body(asyncio.get_event_loop(), asyncio.Event()))
+
+    async def receive():
+        raise NotImplementedError
+
+    environ = build_environ(scope, Body(asyncio.get_event_loop(), receive))
     environ.pop("wsgi.input")
     environ.pop("asgi.scope")
     assert environ == {

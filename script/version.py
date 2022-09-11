@@ -1,7 +1,7 @@
 import importlib
 import os
-import sys
 import subprocess
+import sys
 
 here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -15,7 +15,7 @@ def get_version() -> str:
 
 
 os.chdir(here)
-subprocess.check_call(f"poetry version {get_version()}", shell=True)
+subprocess.check_call(f"pdm version {get_version()}", shell=True)
 subprocess.check_call("git add a2wsgi/__init__.py pyproject.toml", shell=True)
 subprocess.check_call(f'git commit -m "v{get_version()}"', shell=True)
 subprocess.check_call("git push", shell=True)
