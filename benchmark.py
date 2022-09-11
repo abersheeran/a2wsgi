@@ -83,7 +83,7 @@ async def test_convert_wsgi_to_asgi(app, name):
         time_count_100100 = time.time_ns() - start_time
         print(
             f"\n{name:^30}",
-            (time_count_100100 - time_count_100) / 10000 / 10 ** 9,
+            (time_count_100100 - time_count_100) / 10000 / 10**9,
             end="",
         )
 
@@ -104,6 +104,6 @@ def test_convert_asgi_to_wsgi(app, name):
         time_count_100100 = time.time_ns() - start_time
         print(
             f"\n{name:^30}",
-            (time_count_100100 - time_count_100) / 10000 / 10 ** 9,
+            (time_count_100100 - time_count_100) / 10000 / 10**9,
             end="",
         )

@@ -1,12 +1,11 @@
 import asyncio
+import collections
 import os
 import sys
 import typing
 from concurrent.futures import ThreadPoolExecutor
 
 from .types import Environ, Message, Receive, Scope, Send, StartResponse, WSGIApp
-
-__all__ = ("WSGIMiddleware",)
 
 
 class Body:
@@ -174,10 +173,10 @@ class WSGIResponder:
         self.app = app
         self.executor = executor
         self.send_event = asyncio.Event()
-        self.send_queue = []  # type: typing.List[typing.Optional[Message]]
+        self.send_queue: typing.Deque[typing.Union[Message, None]] = collections.deque()
         self.loop = asyncio.get_event_loop()
         self.response_started = False
-        self.exc_info = None  # type: typing.Any
+        self.exc_info: typing.Any = None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         body = Body(self.loop, receive)
@@ -199,10 +198,14 @@ class WSGIResponder:
             if sender and not sender.done():
                 sender.cancel()  # pragma: no cover
 
+    def send(self, message: typing.Optional[Message]) -> None:
+        self.send_queue.append(message)
+        self.loop.call_soon_threadsafe(self.send_event.set)
+
     async def sender(self, send: Send) -> None:
         while True:
             if self.send_queue:
-                message = self.send_queue.pop(0)
+                message = self.send_queue.popleft()
                 if message is None:
                     return
                 await send(message)
@@ -225,21 +228,16 @@ class WSGIResponder:
                 (name.strip().encode("latin1").lower(), value.strip().encode("latin1"))
                 for name, value in response_headers
             ]
-            self.send_queue.append(
+            self.send(
                 {
                     "type": "http.response.start",
                     "status": status_code,
                     "headers": headers,
                 }
             )
-            self.loop.call_soon_threadsafe(self.send_event.set)
 
     def wsgi(self, environ: Environ, start_response: StartResponse) -> None:
         for chunk in self.app(environ, start_response):
-            self.send_queue.append(
-                {"type": "http.response.body", "body": chunk, "more_body": True}
-            )
-            self.loop.call_soon_threadsafe(self.send_event.set)
+            self.send({"type": "http.response.body", "body": chunk, "more_body": True})
 
-        self.send_queue.append({"type": "http.response.body", "body": b""})
-        self.loop.call_soon_threadsafe(self.send_event.set)
+        self.send({"type": "http.response.body", "body": b""})

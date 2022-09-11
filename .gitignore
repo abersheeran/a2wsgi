@@ -102,3 +102,6 @@ ENV/
 
 # mkdocs
 site/
+
+# PDM
+.pdm.toml
