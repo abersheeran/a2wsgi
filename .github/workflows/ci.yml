@@ -39,7 +39,7 @@ jobs:
       - uses: pdm-project/setup-pdm@v2.6
         name: Setup Python and PDM
         with:
-          python-version: 3.10
+          python-version: "3.10"
           architecture: x64
           version: 2.1.1
           prerelease: true
