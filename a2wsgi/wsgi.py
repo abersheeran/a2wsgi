@@ -1,5 +1,7 @@
 import asyncio
 import collections
+import contextvars
+import functools
 import os
 import sys
 import typing
@@ -184,8 +186,10 @@ class WSGIResponder:
         sender = None
         try:
             sender = self.loop.create_task(self.sender(send))
+            context = contextvars.copy_context()
+            func = functools.partial(context.run, self.wsgi)
             await self.loop.run_in_executor(
-                self.executor, self.wsgi, environ, self.start_response
+                self.executor, func, environ, self.start_response
             )
             self.send_queue.append(None)
             self.send_event.set()
