@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import contextvars
 import functools
 import os
 import sys
@@ -7,12 +8,6 @@ import typing
 from concurrent.futures import ThreadPoolExecutor
 
 from .types import Environ, Message, Receive, Scope, Send, StartResponse, WSGIApp
-
-try:
-    # Python 3.7+
-    import contextvars
-except ImportError:
-    contextvars = None
 
 
 class Body:
@@ -191,11 +186,8 @@ class WSGIResponder:
         sender = None
         try:
             sender = self.loop.create_task(self.sender(send))
-            if contextvars is not None:
-                context = contextvars.copy_context()
-                func = functools.partial(context.run, self.wsgi)
-            else:
-                func = self.wsgi
+            context = contextvars.copy_context()
+            func = functools.partial(context.run, self.wsgi)
             await self.loop.run_in_executor(
                 self.executor, func, environ, self.start_response
             )
