@@ -35,5 +35,5 @@ benchmark = [
 includes = ["a2wsgi"]
 
 [build-system]
-build-backend = "pdm.pep517.api"
-requires = ["pdm-pep517>=1.0.0"]
+build-backend = "pdm.backend"
+requires = ["pdm-backend"]
