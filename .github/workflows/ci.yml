@@ -18,8 +18,6 @@ jobs:
           python-version: ${{ matrix.python-version }}
           architecture: x64
           version: 2.1.1
-          prerelease: true
-          enable-pep582: true # Enable PEP 582 package loading globally
       - name: Install dependencies
         run: |
           pdm sync -v -dG dev -dG test --no-self
