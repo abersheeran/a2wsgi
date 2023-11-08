@@ -57,3 +57,11 @@ You can convert an existing WSGI project to an ASGI project to make it easier to
 ### Convert ASGI app to WSGI app
 
 There is a lot of support for WSGI. Converting ASGI to WSGI, you will be able to use many existing services to deploy ASGI applications.
+
+## Compatibility list
+
+This list quickly demonstrates the compatibility of some common frameworks for users who are unfamiliar with the WSGI and ASGI protocols.
+
+- WSGI: [Django(wsgi)](https://docs.djangoproject.com/en/3.0/howto/deployment/wsgi/)/[Kuí(wsgi)](https://kui.aber.sh/wsgi/)/[Pyramid](https://trypyramid.com/)/[Bottle](https://bottlepy.org/)/[Flask](https://flask.palletsprojects.com/)
+- ASGI: [Django(asgi)](https://docs.djangoproject.com/en/3.0/howto/deployment/asgi/)/[Kuí(asgi)](https://kui.aber.sh/asgi/)/[Starlette](https://www.starlette.io/)/[FastAPI](https://fastapi.tiangolo.com/)/[Sanic](https://sanic.readthedocs.io/en/stable/)/[Quart](https://pgjones.gitlab.io/quart/)
+- **Unsupport**: [aiohttp](https://docs.aiohttp.org/en/stable/)
