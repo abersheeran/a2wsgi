@@ -91,18 +91,21 @@ def build_environ(scope: Scope, body: Body) -> Environ:
     """
     Builds a scope and request body into a WSGI environ object.
     """
-    allow_rewrite_environ = {
-        "SCRIPT_NAME": scope.get("root_path", "").encode("utf8").decode("latin1"),
-    }
-    for key in allow_rewrite_environ.keys():
-        environ_var = os.environ.get(key, "")
-        if environ_var:
-            allow_rewrite_environ[key] = unicode_to_wsgi(environ_var)
+    script_name = scope.get("root_path", "").encode("utf8").decode("latin1")
+    path_info = scope["path"].encode("utf8").decode("latin1")
+    if path_info.startswith(script_name):
+        path_info = path_info[len(script_name):]
+
+    script_name_environ_var = os.environ.get("SCRIPT_NAME", "")
+    if script_name_environ_var:
+        script_name = unicode_to_wsgi(script_name_environ_var)
+
     environ = {
         **allow_rewrite_environ,
         "asgi.scope": scope,
         "REQUEST_METHOD": scope["method"],
-        "PATH_INFO": scope["path"].encode("utf8").decode("latin1"),
+        "SCRIPT_NAME": script_name,
+        "PATH_INFO": path_info,
         "QUERY_STRING": scope["query_string"].decode("ascii"),
         "SERVER_PROTOCOL": f"HTTP/{scope['http_version']}",
         "wsgi.version": (1, 0),

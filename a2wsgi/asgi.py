@@ -93,6 +93,9 @@ def build_scope(environ: Environ) -> Scope:
     else:
         client = None
 
+    root_path = environ.get("SCRIPT_NAME", "").encode("latin1").decode("utf8")
+    path = root_path + environ["PATH_INFO"].encode("latin1").decode("utf8")
+
     return {
         "wsgi_environ": environ,
         "type": "http",
@@ -100,9 +103,9 @@ def build_scope(environ: Environ) -> Scope:
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
         "scheme": environ.get("wsgi.url_scheme", "http"),
-        "path": environ["PATH_INFO"].encode("latin1").decode("utf8"),
+        "path": path,
         "query_string": environ["QUERY_STRING"].encode("ascii"),
-        "root_path": environ.get("SCRIPT_NAME", "").encode("latin1").decode("utf8"),
+        "root_path": root_path,
         "client": client,
         "server": (environ["SERVER_NAME"], int(environ["SERVER_PORT"])),
         "headers": headers,
