@@ -101,7 +101,6 @@ def build_environ(scope: Scope, body: Body) -> Environ:
         script_name = unicode_to_wsgi(script_name_environ_var)
 
     environ = {
-        **allow_rewrite_environ,
         "asgi.scope": scope,
         "REQUEST_METHOD": scope["method"],
         "SCRIPT_NAME": script_name,
