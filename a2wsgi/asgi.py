@@ -3,11 +3,11 @@ import collections
 import threading
 from http import HTTPStatus
 from io import BytesIO
-from itertools import chain
 from typing import Any, Coroutine, Deque, Iterable, Optional
 from typing import cast as typing_cast
 
-from .types import ASGIApp, Environ, ExcInfo, Message, Scope, StartResponse
+from .asgi_typing import HTTPScope, ASGIApp, ReceiveEvent, SendEvent
+from .wsgi_typing import Environ, StartResponse, ExceptionInfo, IterableChunks
 
 
 class defaultdict(dict):
@@ -70,46 +70,45 @@ class SyncEvent:
         return message
 
 
-def build_scope(environ: Environ) -> Scope:
+def build_scope(environ: Environ) -> HTTPScope:
     headers = [
-        (key.lower().replace("_", "-").encode("latin-1"), value.encode("latin-1"))
-        for key, value in chain(
-            (
-                (key[5:], value)
-                for key, value in environ.items()
-                if key.startswith("HTTP_")
-                and key not in ("HTTP_CONTENT_TYPE", "HTTP_CONTENT_LENGTH")
-            ),
-            (
-                (key, value)
-                for key, value in environ.items()
-                if key in ("CONTENT_TYPE", "CONTENT_LENGTH")
-            ),
+        (
+            (key[5:] if key.startswith("HTTP_") else key)
+            .lower()
+            .replace("_", "-")
+            .encode("latin-1"),
+            value.encode("latin-1"),  # type: ignore
         )
+        for key, value in environ.items()
+        if (
+            key.startswith("HTTP_")
+            and key not in ("HTTP_CONTENT_TYPE", "HTTP_CONTENT_LENGTH")
+        )
+        or key in ("CONTENT_TYPE", "CONTENT_LENGTH")
     ]
 
-    if environ.get("REMOTE_ADDR") and environ.get("REMOTE_PORT"):
-        client = (environ["REMOTE_ADDR"], int(environ["REMOTE_PORT"]))
-    else:
-        client = None
-
     root_path = environ.get("SCRIPT_NAME", "").encode("latin1").decode("utf8")
-    path = root_path + environ["PATH_INFO"].encode("latin1").decode("utf8")
+    path = root_path + environ.get("PATH_INFO", "").encode("latin1").decode("utf8")
 
-    return {
-        "wsgi_environ": environ,
+    scope: HTTPScope = {
+        "wsgi_environ": environ,  # type: ignore a2wsgi
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "3.0"},
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
         "scheme": environ.get("wsgi.url_scheme", "http"),
         "path": path,
-        "query_string": environ["QUERY_STRING"].encode("ascii"),
+        "query_string": environ.get("QUERY_STRING", "").encode("ascii"),
         "root_path": root_path,
-        "client": client,
         "server": (environ["SERVER_NAME"], int(environ["SERVER_PORT"])),
         "headers": headers,
+        "extensions": {},
     }
+    if environ.get("REMOTE_ADDR") and environ.get("REMOTE_PORT"):
+        client = (environ.get("REMOTE_ADDR", ""), int(environ.get("REMOTE_PORT", "0")))
+        scope["client"] = client
+
+    return scope
 
 
 class ASGIMiddleware:
@@ -164,12 +163,12 @@ class ASGIResponder:
         self.asgi_done = threading.Event()
         self.wsgi_should_stop: bool = False
 
-    async def asgi_receive(self) -> Message:
+    async def asgi_receive(self) -> ReceiveEvent:
         async with self.async_lock:
             self.sync_event.set({"type": "receive"})
             return await self.async_event.wait()
 
-    async def asgi_send(self, message: Message) -> None:
+    async def asgi_send(self, message: SendEvent) -> None:
         async with self.async_lock:
             self.sync_event.set(message)
             await self.async_event.wait()
@@ -201,7 +200,7 @@ class ASGIResponder:
 
     def __call__(
         self, environ: Environ, start_response: StartResponse
-    ) -> Iterable[bytes]:
+    ) -> IterableChunks:
         read_count: int = 0
         body = environ["wsgi.input"] or BytesIO()
         content_length = int(environ.get("CONTENT_LENGTH", None) or 0)
@@ -262,8 +261,8 @@ class ASGIResponder:
         yield b""
 
     def error_response(
-        self, start_response: StartResponse, exception: ExcInfo
-    ) -> Iterable[bytes]:
+        self, start_response: StartResponse, exception: ExceptionInfo
+    ) -> IterableChunks:
         start_response(
             "500 Internal Server Error",
             [
