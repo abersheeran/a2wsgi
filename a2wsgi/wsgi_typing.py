@@ -183,7 +183,7 @@ class StartResponse(Protocol):
         self,
         status: str,
         response_headers: List[Tuple[str, str]],
-        exc_info: ExceptionInfo | None = None,
+        exc_info: Optional[ExceptionInfo] = None,
         /,
     ) -> WriteCallable:
         raise NotImplementedError
