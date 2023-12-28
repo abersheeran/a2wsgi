@@ -7,7 +7,8 @@ import sys
 import typing
 from concurrent.futures import ThreadPoolExecutor
 
-from .types import Environ, Message, Receive, Scope, Send, StartResponse, WSGIApp
+from .asgi_typing import HTTPScope, Scope, Receive, Send, SendEvent
+from .wsgi_typing import Environ, StartResponse, ExceptionInfo, WSGIApp, WriteCallable
 
 
 class Body:
@@ -87,21 +88,21 @@ def unicode_to_wsgi(u):
     return u.encode(ENC, ESC).decode("iso-8859-1")
 
 
-def build_environ(scope: Scope, body: Body) -> Environ:
+def build_environ(scope: HTTPScope, body: Body) -> Environ:
     """
     Builds a scope and request body into a WSGI environ object.
     """
     script_name = scope.get("root_path", "").encode("utf8").decode("latin1")
     path_info = scope["path"].encode("utf8").decode("latin1")
     if path_info.startswith(script_name):
-        path_info = path_info[len(script_name):]
+        path_info = path_info[len(script_name) :]
 
     script_name_environ_var = os.environ.get("SCRIPT_NAME", "")
     if script_name_environ_var:
         script_name = unicode_to_wsgi(script_name_environ_var)
 
-    environ = {
-        "asgi.scope": scope,
+    environ: Environ = {
+        "asgi.scope": scope,  # type: ignore a2wsgi
         "REQUEST_METHOD": scope["method"],
         "SCRIPT_NAME": script_name,
         "PATH_INFO": path_info,
@@ -117,13 +118,16 @@ def build_environ(scope: Scope, body: Body) -> Environ:
     }
 
     # Get server name and port - required in WSGI, not in ASGI
-    server = scope.get("server") or ("localhost", 80)
-    environ["SERVER_NAME"] = server[0]
-    environ["SERVER_PORT"] = server[1]
+    server_addr, server_port = scope.get("server") or ("localhost", 80)
+    environ["SERVER_NAME"] = server_addr
+    environ["SERVER_PORT"] = str(server_port or 0)
 
     # Get client IP address
-    if scope.get("client"):
-        environ["REMOTE_ADDR"] = scope["client"][0]
+    client = scope.get("client")
+    if client is not None:
+        addr, port = client
+        environ["REMOTE_ADDR"] = addr
+        environ["REMOTE_PORT"] = str(port)
 
     # Go through headers and make them into environ entries
     for name, value in scope.get("headers", []):
@@ -177,12 +181,14 @@ class WSGIResponder:
         self.app = app
         self.executor = executor
         self.send_event = asyncio.Event()
-        self.send_queue: typing.Deque[typing.Union[Message, None]] = collections.deque()
+        self.send_queue: typing.Deque[
+            typing.Union[SendEvent, None]
+        ] = collections.deque()
         self.loop = asyncio.get_event_loop()
         self.response_started = False
         self.exc_info: typing.Any = None
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+    async def __call__(self, scope: HTTPScope, receive: Receive, send: Send) -> None:
         body = Body(self.loop, receive)
         environ = build_environ(scope, body)
         sender = None
@@ -204,7 +210,7 @@ class WSGIResponder:
             if sender and not sender.done():
                 sender.cancel()  # pragma: no cover
 
-    def send(self, message: typing.Optional[Message]) -> None:
+    def send(self, message: typing.Optional[SendEvent]) -> None:
         self.send_queue.append(message)
         self.loop.call_soon_threadsafe(self.send_event.set)
 
@@ -223,8 +229,8 @@ class WSGIResponder:
         self,
         status: str,
         response_headers: typing.List[typing.Tuple[str, str]],
-        exc_info: typing.Any = None,
-    ) -> None:
+        exc_info: typing.Optional[ExceptionInfo] = None,
+    ) -> WriteCallable:
         self.exc_info = exc_info
         if not self.response_started:
             self.response_started = True
@@ -241,9 +247,18 @@ class WSGIResponder:
                     "headers": headers,
                 }
             )
+        return lambda chunk: self.send(
+            {"type": "http.response.body", "body": chunk, "more_body": True}
+        )
 
     def wsgi(self, environ: Environ, start_response: StartResponse) -> None:
-        for chunk in self.app(environ, start_response):
-            self.send({"type": "http.response.body", "body": chunk, "more_body": True})
+        iterable = self.app(environ, start_response)
+        try:
+            for chunk in iterable:
+                self.send(
+                    {"type": "http.response.body", "body": chunk, "more_body": True}
+                )
 
-        self.send({"type": "http.response.body", "body": b""})
+            self.send({"type": "http.response.body", "body": b""})
+        finally:
+            getattr(iterable, "close", lambda: None)()
