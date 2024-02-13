@@ -151,15 +151,16 @@ class WSGIMiddleware:
     Convert WSGIApp to ASGIApp.
     """
 
-    def __init__(self, app: WSGIApp, workers: int = 10) -> None:
+    def __init__(self, app: WSGIApp, workers: int = 10, send_queue_size=10) -> None:
         self.app = app
+        self.send_queue_size = send_queue_size
         self.executor = ThreadPoolExecutor(
             thread_name_prefix="WSGI", max_workers=workers
         )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
-            responder = WSGIResponder(self.app, self.executor)
+            responder = WSGIResponder(self.app, self.executor, self.send_queue_size)
             return await responder(scope, receive, send)
 
         if scope["type"] == "websocket":
@@ -177,14 +178,13 @@ class WSGIMiddleware:
 
 
 class WSGIResponder:
-    def __init__(self, app: WSGIApp, executor: ThreadPoolExecutor) -> None:
+    def __init__(
+        self, app: WSGIApp, executor: ThreadPoolExecutor, send_queue_size: int
+    ) -> None:
         self.app = app
         self.executor = executor
-        self.send_event = asyncio.Event()
-        self.send_queue: typing.Deque[
-            typing.Union[SendEvent, None]
-        ] = collections.deque()
         self.loop = asyncio.get_event_loop()
+        self.send_queue = asyncio.Queue(send_queue_size)
         self.response_started = False
         self.exc_info: typing.Any = None
 
@@ -199,8 +199,8 @@ class WSGIResponder:
             await self.loop.run_in_executor(
                 self.executor, func, environ, self.start_response
             )
-            self.send_queue.append(None)
-            self.send_event.set()
+            await self.send_queue.put(None)
+            await self.send_queue.join()
             await asyncio.wait_for(sender, None)
             if self.exc_info is not None:
                 raise self.exc_info[0].with_traceback(
@@ -211,19 +211,19 @@ class WSGIResponder:
                 sender.cancel()  # pragma: no cover
 
     def send(self, message: typing.Optional[SendEvent]) -> None:
-        self.send_queue.append(message)
-        self.loop.call_soon_threadsafe(self.send_event.set)
+        future = asyncio.run_coroutine_threadsafe(
+            self.send_queue.put(message),
+            loop=self.loop,
+        )
+        future.result()
 
     async def sender(self, send: Send) -> None:
         while True:
-            if self.send_queue:
-                message = self.send_queue.popleft()
-                if message is None:
-                    return
-                await send(message)
-            else:
-                await self.send_event.wait()
-                self.send_event.clear()
+            message = await self.send_queue.get()
+            self.send_queue.task_done()
+            if message is None:
+                return
+            await send(message)
 
     def start_response(
         self,
