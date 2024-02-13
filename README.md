@@ -26,6 +26,8 @@ ASGI_APP = WSGIMiddleware(WSGI_APP)
 
 WSGIMiddleware executes WSGI applications with a thread pool of up to 10 threads by default. If you want to increase or decrease this number, just like `WSGIMiddleware(..., workers=15)`.
 
+WSGIMiddleware utilizes a queue to direct traffic from the WSGI App to the client. To adjust the queue size, simply specify the send_queue_size parameter (default to `10`) during initialization, like so: WSGIMiddleware(..., send_queue_size=15). This enable developers to balance memory usage and application responsiveness.
+
 ### `ASGIMiddleware`
 
 Convert ASGI app to WSGI app:
