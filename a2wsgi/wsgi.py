@@ -151,7 +151,9 @@ class WSGIMiddleware:
     Convert WSGIApp to ASGIApp.
     """
 
-    def __init__(self, app: WSGIApp, workers: int = 10, send_queue_size=10) -> None:
+    def __init__(
+        self, app: WSGIApp, workers: int = 10, send_queue_size: int = 10
+    ) -> None:
         self.app = app
         self.send_queue_size = send_queue_size
         self.executor = ThreadPoolExecutor(
