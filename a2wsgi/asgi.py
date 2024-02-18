@@ -237,14 +237,17 @@ class ASGIResponder:
 
             if message_type == "receive":
                 data: bytes = body.read(min(65536, content_length - read_count))
-                read_count += len(data)
-                self.async_event.set(
-                    {
-                        "type": "http.request",
-                        "body": data,
-                        "more_body": read_count < content_length,
-                    }
-                )
+                if data == b"":
+                    self.async_event.set({"type": "http.disconnect"})
+                else:
+                    read_count += len(data)
+                    self.async_event.set(
+                        {
+                            "type": "http.request",
+                            "body": data,
+                            "more_body": read_count < content_length,
+                        }
+                    )
             else:
                 self.async_event.set(None)
 
