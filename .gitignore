@@ -104,4 +104,4 @@ ENV/
 site/
 
 # PDM
-.pdm.toml
+.pdm-python
