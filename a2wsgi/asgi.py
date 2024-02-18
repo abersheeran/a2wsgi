@@ -174,19 +174,23 @@ class ASGIResponder:
             await self.async_event.wait()
 
     def asgi_done_callback(self, future: asyncio.Future) -> None:
-        exception = future.exception()
-        if exception is not None:
-            self.sync_event.set(
-                {
-                    "type": "a2wsgi.error",
-                    "exception": (
-                        type(exception),
-                        exception,
-                        exception.__traceback__,
-                    ),
-                }
-            )
-        self.asgi_done.set()
+        try:
+            exception = future.exception()
+        except asyncio.CancelledError:
+            pass
+        else:
+            if exception is not None:
+                self.sync_event.set(
+                    {
+                        "type": "a2wsgi.error",
+                        "exception": (
+                            type(exception),
+                            exception,
+                            exception.__traceback__,
+                        ),
+                    }
+                )
+            self.asgi_done.set()
 
     def start_asgi_app(self, environ: Environ) -> asyncio.Task:
         run_asgi: asyncio.Task = self.loop.create_task(
