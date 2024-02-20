@@ -217,7 +217,6 @@ class ASGIResponder:
         while True:
             message = self.sync_event.wait()
             message_type = message["type"]
-            print(message)
 
             if message_type == "http.response.start":
                 start_response(
