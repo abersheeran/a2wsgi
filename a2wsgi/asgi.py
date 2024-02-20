@@ -190,6 +190,7 @@ class ASGIResponder:
                         ),
                     }
                 )
+        finally:
             self.asgi_done.set()
 
     def start_asgi_app(self, environ: Environ) -> asyncio.Task:
