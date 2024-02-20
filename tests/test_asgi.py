@@ -86,7 +86,7 @@ async def concurrent_rw(scope, receive, send):
             asyncio.create_task(listen_for_disconnect()),
             asyncio.create_task(stream_response()),
         ],
-        return_when=asyncio.FIRST_COMPLETED,
+        return_when=asyncio.ALL_COMPLETED,
     )
     [task.cancel() for task in pending]
     [task.result() for task in done]

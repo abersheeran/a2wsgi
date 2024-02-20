@@ -217,6 +217,7 @@ class ASGIResponder:
         while True:
             message = self.sync_event.wait()
             message_type = message["type"]
+            print(message)
 
             if message_type == "http.response.start":
                 start_response(
@@ -237,7 +238,15 @@ class ASGIResponder:
                 self.wsgi_should_stop = True
             # ASGI application error
             elif message_type == "a2wsgi.error":
-                yield from self.error_response(start_response, message["exception"])
+                start_response(
+                    "500 Internal Server Error",
+                    [
+                        ("Content-Type", "text/plain; charset=utf-8"),
+                        ("Content-Length", "28"),
+                    ],
+                    message["exception"],
+                )
+                yield b"Server got itself in trouble"
                 self.wsgi_should_stop = True
 
             if message_type == "receive":
@@ -267,16 +276,3 @@ class ASGIResponder:
         self.asgi_done.wait(self.wait_time)
         asgi_task.cancel()
         yield b""
-
-    def error_response(
-        self, start_response: StartResponse, exception: ExceptionInfo
-    ) -> IterableChunks:
-        start_response(
-            "500 Internal Server Error",
-            [
-                ("Content-Type", "text/plain; charset=utf-8"),
-                ("Content-Length", "28"),
-            ],
-            exception,
-        )
-        yield b"Server got itself in trouble"
