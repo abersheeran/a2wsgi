@@ -7,7 +7,7 @@ from typing import Any, Coroutine, Deque, Iterable, Optional
 from typing import cast as typing_cast
 
 from .asgi_typing import HTTPScope, ASGIApp, ReceiveEvent, SendEvent
-from .wsgi_typing import Environ, StartResponse, ExceptionInfo, IterableChunks
+from .wsgi_typing import Environ, StartResponse, IterableChunks
 
 
 class defaultdict(dict):
@@ -247,19 +247,21 @@ class ASGIResponder:
                 )
                 yield b"Server got itself in trouble"
                 self.wsgi_should_stop = True
+            elif message_type == "receive":
+                pass
+            else:
+                raise RuntimeError(f"Unknown message type: {message_type}")
 
             if message_type == "receive":
-                data: bytes = body.read(min(65536, content_length - read_count))
+                read_size = min(65536, content_length - read_count)
+                data: bytes = body.read(read_size)
                 if data == b"":
                     self.async_event.set({"type": "http.disconnect"})
                 else:
                     read_count += len(data)
+                    more_body = read_count < content_length
                     self.async_event.set(
-                        {
-                            "type": "http.request",
-                            "body": data,
-                            "more_body": read_count < content_length,
-                        }
+                        {"type": "http.request", "body": data, "more_body": more_body}
                     )
             else:
                 self.async_event.set(None)
