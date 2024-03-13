@@ -200,7 +200,10 @@ class WSGIResponder:
             await self.loop.run_in_executor(
                 self.executor, func, environ, self.start_response
             )
-            await self.send_queue.join()
+            await self.send_queue.put(None)
+            # Sender may raise an exception, so we need to await it
+            # dont await send_queue.join() because it will never finish
+            await sender
             if self.exc_info is not None:
                 raise self.exc_info[0].with_traceback(
                     self.exc_info[1], self.exc_info[2]
@@ -218,6 +221,8 @@ class WSGIResponder:
     async def sender(self, send: Send) -> None:
         while True:
             message = await self.send_queue.get()
+            if message is None:
+                break
             await send(message)
             self.send_queue.task_done()
 
