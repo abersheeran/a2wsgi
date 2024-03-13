@@ -96,7 +96,9 @@ def return_exc_info(environ, start_response):
 @pytest.mark.asyncio
 async def test_wsgi_get():
     app = WSGIMiddleware(hello_world)
-    async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
         response = await client.get("/")
         assert response.status_code == 200
         assert response.text == "Hello World!\n"
@@ -105,7 +107,9 @@ async def test_wsgi_get():
 @pytest.mark.asyncio
 async def test_wsgi_post():
     app = WSGIMiddleware(echo_body)
-    async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
         response = await client.post("/", json={"example": 123})
         assert response.status_code == 200
         assert response.text == '{"example": 123}'
@@ -116,7 +120,9 @@ async def test_wsgi_exception():
     # Note that we're testing the WSGI app directly here.
     # The HTTP protocol implementations would catch this error and return 500.
     app = WSGIMiddleware(raise_exception)
-    async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
         with pytest.raises(RuntimeError):
             await client.get("/")
 
@@ -126,7 +132,9 @@ async def test_wsgi_exc_info():
     # Note that we're testing the WSGI app directly here.
     # The HTTP protocol implementations would catch this error and return 500.
     app = WSGIMiddleware(return_exc_info)
-    async with httpx.AsyncClient(app=app, base_url="http://testserver") as client:
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
         with pytest.raises(RuntimeError):
             response = await client.get("/")
 

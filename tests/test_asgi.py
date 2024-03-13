@@ -94,7 +94,9 @@ async def concurrent_rw(scope, receive, send):
 
 def test_asgi_get():
     app = ASGIMiddleware(hello_world)
-    with httpx.Client(app=app, base_url="http://testserver:80") as client:
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
         response = client.get("/")
         assert response.status_code == 200
         assert response.text == "Hello, world!"
@@ -102,7 +104,9 @@ def test_asgi_get():
 
 def test_asgi_post():
     app = ASGIMiddleware(echo_body)
-    with httpx.Client(app=app, base_url="http://testserver:80") as client:
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
         response = client.post("/", content="hi boy")
         assert response.status_code == 200
         assert response.text == "hi boy"
@@ -110,7 +114,9 @@ def test_asgi_post():
 
 def test_asgi_exception():
     app = ASGIMiddleware(raise_exception)
-    with httpx.Client(app=app, base_url="http://testserver:80") as client:
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
         with pytest.raises(RuntimeError):
             client.get("/")
 
@@ -131,7 +137,9 @@ def test_background_app():
 
     def _():
         app = ASGIMiddleware(background_tasks)
-        with httpx.Client(app=app, base_url="http://testserver:80") as client:
+        with httpx.Client(
+            transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+        ) as client:
             response = client.get("/")
             assert response.status_code == 200
             assert response.text == "Hello, world!"
@@ -147,7 +155,9 @@ def test_background_app_wait_time():
 
     def _():
         app = ASGIMiddleware(background_tasks, wait_time=1)
-        with httpx.Client(app=app, base_url="http://testserver:80") as client:
+        with httpx.Client(
+            transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+        ) as client:
             response = client.get("/")
             assert response.status_code == 200
             assert response.text == "Hello, world!"
@@ -159,7 +169,9 @@ def test_background_app_wait_time():
 def test_concurrent_rw():
     app = ASGIMiddleware(concurrent_rw)
 
-    with httpx.Client(app=app, base_url="http://testserver:80") as client:
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
         response = client.get("/")
         assert response.status_code == 200
 

@@ -1,11 +1,9 @@
 [project]
-authors = [
-  {name = "abersheeran", email = "me@abersheeran.com"},
-]
+authors = [{ name = "abersheeran", email = "me@abersheeran.com" }]
 classifiers = ["Programming Language :: Python :: 3"]
 dependencies = []
 description = "Convert WSGI app to ASGI app or ASGI app to WSGI app."
-license = {text = "Apache-2.0"}
+license = { text = "Apache-2.0" }
 name = "a2wsgi"
 readme = "README.md"
 requires-python = ">=3.8.0"
@@ -26,10 +24,7 @@ dev = [
   "mypy",
   "httpx<1.0.0,>=0.22.0",
 ]
-benchmark = [
-    "uvicorn>=0.16.0",
-    "asgiref>=3.4.1",
-]
+benchmark = ["uvicorn>=0.16.0", "asgiref>=3.4.1"]
 
 [tool.pdm.build]
 includes = ["a2wsgi"]
