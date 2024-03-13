@@ -1,5 +1,4 @@
 import asyncio
-import collections
 import contextvars
 import functools
 import os
@@ -201,9 +200,7 @@ class WSGIResponder:
             await self.loop.run_in_executor(
                 self.executor, func, environ, self.start_response
             )
-            await self.send_queue.put(None)
             await self.send_queue.join()
-            await asyncio.wait_for(sender, None)
             if self.exc_info is not None:
                 raise self.exc_info[0].with_traceback(
                     self.exc_info[1], self.exc_info[2]
@@ -214,18 +211,15 @@ class WSGIResponder:
 
     def send(self, message: typing.Optional[SendEvent]) -> None:
         future = asyncio.run_coroutine_threadsafe(
-            self.send_queue.put(message),
-            loop=self.loop,
+            self.send_queue.put(message), loop=self.loop
         )
         future.result()
 
     async def sender(self, send: Send) -> None:
         while True:
             message = await self.send_queue.get()
-            self.send_queue.task_done()
-            if message is None:
-                return
             await send(message)
+            self.send_queue.task_done()
 
     def start_response(
         self,
