@@ -203,6 +203,20 @@ class ASGIResponder:
         run_asgi.add_done_callback(self.asgi_done_callback)
         return run_asgi
 
+    def call_in_loop(self, func, *args):
+        """Call func(*args) in the asyncio loop, in a thread-safe way.
+
+        Return the result.
+        """
+        # Asyncio's call_soon_threadsafe doesn't return the result;
+        # to get that we need to use run_coroutine_threadsafe, which
+        # requires a coroutine (async function).
+        async def coro():
+            return func(*args)
+        future = asyncio.run_coroutine_threadsafe(coro(), self.loop)
+        # Block until the result is available, and return it.
+        return future.result()
+
     def __call__(
         self, environ: Environ, start_response: StartResponse
     ) -> IterableChunks:
@@ -210,9 +224,8 @@ class ASGIResponder:
         body = environ["wsgi.input"] or BytesIO()
         content_length = int(environ.get("CONTENT_LENGTH", None) or 0)
 
-        asgi_task = self.start_asgi_app(environ)
         # activate loop
-        self.loop.call_soon_threadsafe(lambda: None)
+        asgi_task = self.call_in_loop(self.start_asgi_app, environ)
 
         while True:
             message = self.sync_event.wait()
@@ -270,10 +283,10 @@ class ASGIResponder:
                 self.async_event.set_nowait()
                 break
 
-            if asgi_task.done():
+            if self.call_in_loop(asgi_task.done):
                 break
 
         # HTTP response ends, wait for run_asgi's background tasks
         self.asgi_done.wait(self.wait_time)
-        asgi_task.cancel()
+        self.call_in_loop(asgi_task.cancel)
         yield b""

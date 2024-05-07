@@ -24,6 +24,8 @@ jobs:
 
       - name: Tests
         run: pdm run pytest tests -o log_cli=true -o log_cli_level=DEBUG
+        env:
+          PYTHONASYNCIODEBUG: 1
 
   publish:
     needs: tests
