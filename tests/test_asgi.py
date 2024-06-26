@@ -224,3 +224,19 @@ def test_starlette_base_http_middleware():
         assert response.status_code == 200
         assert response.text == '{"hello":"world"}'
         assert response.headers["x-middleware"] == "true"
+
+
+def test_baize_stream_response():
+    from baize.asgi import StreamResponse
+
+    async def stream():
+        for i in range(10):
+            yield str(i).encode()
+
+    app = ASGIMiddleware(StreamResponse(stream()))
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == "0123456789"

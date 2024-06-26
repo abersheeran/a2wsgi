@@ -23,10 +23,11 @@ dev = [
 ]
 benchmark = ["uvicorn>=0.16.0", "asgiref>=3.4.1"]
 test = [
-  "pytest<8.0.0,>=7.0.1",
-  "pytest-cov<4.0.0,>=3.0.0",
-  "pytest-asyncio<1.0.0,>=0.11.0",
-  "starlette>=0.37.2",
+    "pytest<8.0.0,>=7.0.1",
+    "pytest-cov<4.0.0,>=3.0.0",
+    "pytest-asyncio<1.0.0,>=0.11.0",
+    "starlette>=0.37.2",
+    "baize>=0.20.8",
 ]
 
 [tool.pdm.build]
