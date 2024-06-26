@@ -194,3 +194,15 @@ def test_http_content_headers():
     counter = Counter(scope["headers"])
     assert counter[(b"content-type", content_type.encode())] == 1
     assert counter[(b"content-length", content_length.encode())] == 1
+
+
+def test_starlette_stream_response():
+    from starlette.responses import StreamingResponse
+
+    app = ASGIMiddleware(StreamingResponse(content=map(str, range(10))))
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == "0123456789"

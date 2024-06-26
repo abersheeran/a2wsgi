@@ -254,12 +254,17 @@ class ASGIResponder:
 
             if message_type == "receive":
                 read_size = min(65536, content_length - read_count)
-                data: bytes = body.read(read_size)
-                read_count += len(data)
-                more_body = read_count < content_length
-                self.async_event.set(
-                    {"type": "http.request", "body": data, "more_body": more_body}
-                )
+                if read_size == 0:  # No more body, so don't read anymore
+                    self.async_event.set(
+                        {"type": "http.request", "body": b"", "more_body": False}
+                    )
+                else:
+                    data: bytes = body.read(read_size)
+                    read_count += len(data)
+                    more_body = read_count < content_length
+                    self.async_event.set(
+                        {"type": "http.request", "body": data, "more_body": more_body}
+                    )
             else:
                 self.async_event.set(None)
 
