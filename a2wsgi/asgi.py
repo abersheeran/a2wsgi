@@ -152,11 +152,13 @@ class ASGIResponder:
         self.wait_time = wait_time
 
         self.sync_event = SyncEvent()
-        self.async_event = AsyncEvent(loop)
-        self.async_lock: asyncio.Lock
+        self.sync_event_set_lock: asyncio.Lock
+
+        self.receive_event = AsyncEvent(loop)
+        self.send_event = AsyncEvent(loop)
 
         def _init_async_lock():
-            self.async_lock = asyncio.Lock()
+            self.sync_event_set_lock = asyncio.Lock()
 
         loop.call_soon_threadsafe(_init_async_lock)
 
@@ -164,14 +166,14 @@ class ASGIResponder:
         self.wsgi_should_stop: bool = False
 
     async def asgi_receive(self) -> ReceiveEvent:
-        async with self.async_lock:
-            self.sync_event.set({"type": "receive"})
-            return await self.async_event.wait()
+        await self.sync_event_set_lock.acquire()
+        self.sync_event.set({"type": "receive"})
+        return await self.receive_event.wait()
 
     async def asgi_send(self, message: SendEvent) -> None:
-        async with self.async_lock:
-            self.sync_event.set(message)
-            await self.async_event.wait()
+        await self.sync_event_set_lock.acquire()
+        self.sync_event.set(message)
+        await self.send_event.wait()
 
     def asgi_done_callback(self, future: asyncio.Future) -> None:
         try:
@@ -209,6 +211,8 @@ class ASGIResponder:
         read_count: int = 0
         body = environ["wsgi.input"] or BytesIO()
         content_length = int(environ.get("CONTENT_LENGTH", None) or 0)
+        receive_eof = False
+        body_sent = False
 
         asgi_task = self.start_asgi_app(environ)
         # activate loop
@@ -216,6 +220,7 @@ class ASGIResponder:
 
         while True:
             message = self.sync_event.wait()
+            self.loop.call_soon_threadsafe(self.sync_event_set_lock.release)
             message_type = message["type"]
 
             if message_type == "http.response.start":
@@ -230,13 +235,21 @@ class ASGIResponder:
                     ],
                     None,
                 )
+                self.send_event.set(None)
             elif message_type == "http.response.body":
                 yield message.get("body", b"")
+                body_sent = True
                 self.wsgi_should_stop = not message.get("more_body", False)
+                self.send_event.set(None)
             elif message_type == "http.response.disconnect":
                 self.wsgi_should_stop = True
+                self.send_event.set(None)
             # ASGI application error
             elif message_type == "a2wsgi.error":
+                if body_sent:
+                    raise message["exception"][1].with_traceback(
+                        message["exception"][2]
+                    )
                 start_response(
                     "500 Internal Server Error",
                     [
@@ -248,28 +261,27 @@ class ASGIResponder:
                 yield b"Server got itself in trouble"
                 self.wsgi_should_stop = True
             elif message_type == "receive":
-                pass
-            else:
-                raise RuntimeError(f"Unknown message type: {message_type}")
-
-            if message_type == "receive":
                 read_size = min(65536, content_length - read_count)
                 if read_size == 0:  # No more body, so don't read anymore
-                    self.async_event.set(
-                        {"type": "http.request", "body": b"", "more_body": False}
-                    )
+                    if not receive_eof:
+                        self.receive_event.set(
+                            {"type": "http.request", "body": b"", "more_body": False}
+                        )
+                        receive_eof = True
+                    else:
+                        pass  # let `await receive()` wait
                 else:
                     data: bytes = body.read(read_size)
                     read_count += len(data)
                     more_body = read_count < content_length
-                    self.async_event.set(
+                    self.receive_event.set(
                         {"type": "http.request", "body": data, "more_body": more_body}
                     )
             else:
-                self.async_event.set(None)
+                raise RuntimeError(f"Unknown message type: {message_type}")
 
             if self.wsgi_should_stop:
-                self.async_event.set_nowait()
+                self.receive_event.set({"type": "http.disconnect"})
                 break
 
             if asgi_task.done():

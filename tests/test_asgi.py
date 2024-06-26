@@ -16,13 +16,11 @@ async def hello_world(scope, receive, send):
             "status": 200,
             "headers": [
                 [b"content-type", b"text/plain"],
+                [b"content-length", b"13"],
             ],
         }
     )
-    await send(
-        {"type": "http.response.body", "body": b"Hello, world!", "more_body": True}
-    )
-    await send({"type": "http.response.disconnect"})
+    await send({"type": "http.response.body", "body": b"Hello, world!"})
 
 
 async def echo_body(scope, receive, send):
@@ -206,3 +204,23 @@ def test_starlette_stream_response():
         response = client.get("/")
         assert response.status_code == 200
         assert response.text == "0123456789"
+
+
+def test_starlette_base_http_middleware():
+    from starlette.responses import JSONResponse
+    from starlette.middleware.base import BaseHTTPMiddleware
+
+    class Middleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            response = await call_next(request)
+            response.headers["x-middleware"] = "true"
+            return response
+
+    app = ASGIMiddleware(Middleware(JSONResponse({"hello": "world"})))
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.text == '{"hello":"world"}'
+        assert response.headers["x-middleware"] == "true"
