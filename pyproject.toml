@@ -1,7 +1,9 @@
 [project]
 authors = [{ name = "abersheeran", email = "me@abersheeran.com" }]
 classifiers = ["Programming Language :: Python :: 3"]
-dependencies = []
+dependencies = [
+  "typing_extensions; python_version<'3.11'"
+]
 description = "Convert WSGI app to ASGI app or ASGI app to WSGI app."
 license = { text = "Apache-2.0" }
 name = "a2wsgi"
