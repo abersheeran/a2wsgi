@@ -182,15 +182,18 @@ class ASGIResponder:
             pass
         else:
             if exception is not None:
-                self.sync_event.set(
-                    {
-                        "type": "a2wsgi.error",
-                        "exception": (
-                            type(exception),
-                            exception,
-                            exception.__traceback__,
-                        ),
-                    }
+                task = asyncio.create_task(self.sync_event_set_lock.acquire())
+                task.add_done_callback(
+                    lambda _: self.sync_event.set(
+                        {
+                            "type": "a2wsgi.error",
+                            "exception": (
+                                type(exception),
+                                exception,
+                                exception.__traceback__,
+                            ),
+                        }
+                    )
                 )
         finally:
             self.asgi_done.set()
