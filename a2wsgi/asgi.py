@@ -21,7 +21,7 @@ class defaultdict(dict):
 
 StatusStringMapping = defaultdict(
     lambda status: f"{status} Unknown Status Code",
-    {int(status): f"{status} {status.phrase}" for status in HTTPStatus},
+    {status.value: f"{status.value} {status.phrase}" for status in HTTPStatus},
 )
 
 
