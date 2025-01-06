@@ -3,11 +3,13 @@ import collections
 import threading
 from http import HTTPStatus
 from io import BytesIO
-from typing import Any, Coroutine, Deque, Iterable, Optional
+from typing import Any, Coroutine, Deque, Iterable, Optional, TypeVar
 from typing import cast as typing_cast
 
 from .asgi_typing import HTTPScope, ASGIApp, ReceiveEvent, SendEvent
 from .wsgi_typing import Environ, StartResponse, IterableChunks
+
+T = TypeVar("T")
 
 
 class defaultdict(dict):
@@ -198,7 +200,7 @@ class ASGIResponder:
         finally:
             self.asgi_done.set()
 
-    def start_asgi_app(self, environ: Environ) -> asyncio.Task:
+    async def start_asgi_app(self, environ: Environ) -> asyncio.Task:
         run_asgi: asyncio.Task = self.loop.create_task(
             typing_cast(
                 Coroutine[None, None, None],
@@ -207,6 +209,9 @@ class ASGIResponder:
         )
         run_asgi.add_done_callback(self.asgi_done_callback)
         return run_asgi
+
+    def execute_in_loop(self, coro: Coroutine[None, None, T]) -> T:
+        return asyncio.run_coroutine_threadsafe(coro, self.loop).result()
 
     def __call__(
         self, environ: Environ, start_response: StartResponse
@@ -217,7 +222,7 @@ class ASGIResponder:
         receive_eof = False
         body_sent = False
 
-        asgi_task = self.start_asgi_app(environ)
+        asgi_task = self.execute_in_loop(self.start_asgi_app(environ))
         # activate loop
         self.loop.call_soon_threadsafe(lambda: None)
 
@@ -287,10 +292,10 @@ class ASGIResponder:
                 self.receive_event.set({"type": "http.disconnect"})
                 break
 
-            if asgi_task.done():
+            if self.asgi_done.is_set():
                 break
 
         # HTTP response ends, wait for run_asgi's background tasks
         self.asgi_done.wait(self.wait_time)
-        asgi_task.cancel()
+        self.loop.call_soon_threadsafe(asgi_task.cancel)
         yield b""
