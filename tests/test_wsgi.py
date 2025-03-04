@@ -112,7 +112,7 @@ async def test_wsgi_post():
     ) as client:
         response = await client.post("/", json={"example": 123})
         assert response.status_code == 200
-        assert response.text == '{"example":123}'
+        assert response.json() == {"example": 123}
 
 
 @pytest.mark.asyncio
