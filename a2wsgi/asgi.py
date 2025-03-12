@@ -33,9 +33,12 @@ class AsyncEvent:
         self.__waiters: Deque[asyncio.Future] = collections.deque()
         self.__nowait = False
 
-    def set(self, message: Any) -> None:
+    def _set(self, message: Any) -> None:
         for future in filter(lambda f: not f.done(), self.__waiters):
             future.set_result(message)
+
+    def set(self, message: Any) -> None:
+        self.loop.call_soon_threadsafe(self._set, message)
 
     async def wait(self) -> Any:
         if self.__nowait:
@@ -44,7 +47,8 @@ class AsyncEvent:
         future = self.loop.create_future()
         self.__waiters.append(future)
         try:
-            return await future
+            result = await future
+            return result
         finally:
             self.__waiters.remove(future)
 
@@ -54,16 +58,16 @@ class AsyncEvent:
 
 class SyncEvent:
     def __init__(self) -> None:
-        self.__event = threading.Event()
+        self.__write_event = threading.Event()
         self.__message: Any = None
 
     def set(self, message: Any) -> None:
         self.__message = message
-        self.__event.set()
+        self.__write_event.set()
 
     def wait(self) -> Any:
-        self.__event.wait()
-        self.__event.clear()
+        self.__write_event.wait()
+        self.__write_event.clear()
         message, self.__message = self.__message, None
         return message
 
@@ -75,7 +79,7 @@ def build_scope(environ: Environ) -> HTTPScope:
             .lower()
             .replace("_", "-")
             .encode("latin-1"),
-            value.encode("latin-1"),
+            value.encode("latin-1"),  # type: ignore
         )
         for key, value in environ.items()
         if (
@@ -89,7 +93,7 @@ def build_scope(environ: Environ) -> HTTPScope:
     path = root_path + environ.get("PATH_INFO", "").encode("latin1").decode("utf8")
 
     scope: HTTPScope = {
-        "wsgi_environ": environ,
+        "wsgi_environ": environ,  # type: ignore a2wsgi
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "3.0"},
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
@@ -103,7 +107,8 @@ def build_scope(environ: Environ) -> HTTPScope:
         "extensions": {},
     }
     if environ.get("REMOTE_ADDR") and environ.get("REMOTE_PORT"):
-        scope["client"] = (environ.get("REMOTE_ADDR", ""), int(environ.get("REMOTE_PORT", "0")))
+        client = (environ.get("REMOTE_ADDR", ""), int(environ.get("REMOTE_PORT", "0")))
+        scope["client"] = client
 
     return scope
 
@@ -122,9 +127,11 @@ class ASGIMiddleware:
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         self.app = app
-        self.loop = loop or asyncio.new_event_loop()
         if loop is None:
-            threading.Thread(target=self.loop.run_forever, daemon=True).start()
+            loop = asyncio.new_event_loop()
+            loop_threading = threading.Thread(target=loop.run_forever, daemon=True)
+            loop_threading.start()
+        self.loop = loop
         self.wait_time = wait_time
 
     def __call__(
@@ -147,23 +154,28 @@ class ASGIResponder:
         self.wait_time = wait_time
 
         self.sync_event = SyncEvent()
-        self.sync_event_set_lock = asyncio.Lock()
+        self.sync_event_set_lock: asyncio.Lock
 
         self.receive_event = AsyncEvent(loop)
         self.send_event = AsyncEvent(loop)
 
+        def _init_async_lock():
+            self.sync_event_set_lock = asyncio.Lock()
+
+        loop.call_soon_threadsafe(_init_async_lock)
+
         self.asgi_done = threading.Event()
-        self.wsgi_should_stop = False
+        self.wsgi_should_stop: bool = False
 
     async def asgi_receive(self) -> ReceiveEvent:
-        async with self.sync_event_set_lock:
-            self.sync_event.set({"type": "receive"})
-            return await self.receive_event.wait()
+        await self.sync_event_set_lock.acquire()
+        self.sync_event.set({"type": "receive"})
+        return await self.receive_event.wait()
 
     async def asgi_send(self, message: SendEvent) -> None:
-        async with self.sync_event_set_lock:
-            self.sync_event.set(message)
-            await self.send_event.wait()
+        await self.sync_event_set_lock.acquire()
+        self.sync_event.set(message)
+        await self.send_event.wait()
 
     def asgi_done_callback(self, future: asyncio.Future) -> None:
         try:
@@ -172,19 +184,28 @@ class ASGIResponder:
             pass
         else:
             if exception is not None:
-                async def _set_error():
-                    await self.sync_event_set_lock.acquire()
-                    self.sync_event.set({
-                        "type": "a2wsgi.error",
-                        "exception": (type(exception), exception, exception.__traceback__),
-                    })
-                asyncio.create_task(_set_error())
+                task = asyncio.create_task(self.sync_event_set_lock.acquire())
+                task.add_done_callback(
+                    lambda _: self.sync_event.set(
+                        {
+                            "type": "a2wsgi.error",
+                            "exception": (
+                                type(exception),
+                                exception,
+                                exception.__traceback__,
+                            ),
+                        }
+                    )
+                )
         finally:
             self.asgi_done.set()
 
     async def start_asgi_app(self, environ: Environ) -> asyncio.Task:
-        run_asgi = self.loop.create_task(
-            self.app(build_scope(environ), self.asgi_receive, self.asgi_send)
+        run_asgi: asyncio.Task = self.loop.create_task(
+            typing_cast(
+                Coroutine[None, None, None],
+                self.app(build_scope(environ), self.asgi_receive, self.asgi_send),
+            )
         )
         run_asgi.add_done_callback(self.asgi_done_callback)
         return run_asgi
@@ -195,13 +216,14 @@ class ASGIResponder:
     def __call__(
         self, environ: Environ, start_response: StartResponse
     ) -> IterableChunks:
+        read_count: int = 0
         body = environ["wsgi.input"] or BytesIO()
-        content_length = int(environ.get("CONTENT_LENGTH", "0"))
-        read_count = 0
+        content_length = int(environ.get("CONTENT_LENGTH", None) or 0)
         receive_eof = False
         body_sent = False
 
         asgi_task = self.execute_in_loop(self.start_asgi_app(environ))
+        # activate loop
         self.loop.call_soon_threadsafe(lambda: None)
 
         while True:
@@ -213,7 +235,10 @@ class ASGIResponder:
                 start_response(
                     StatusStringMapping[message["status"]],
                     [
-                        (name.strip().decode("latin1"), value.strip().decode("latin1"))
+                        (
+                            name.strip().decode("latin1"),
+                            value.strip().decode("latin1"),
+                        )
                         for name, value in message["headers"]
                     ],
                     None,
@@ -227,29 +252,38 @@ class ASGIResponder:
             elif message_type == "http.response.disconnect":
                 self.wsgi_should_stop = True
                 self.send_event.set(None)
+            # ASGI application error
             elif message_type == "a2wsgi.error":
                 if body_sent:
-                    raise message["exception"][1].with_traceback(message["exception"][2])
+                    raise message["exception"][1].with_traceback(
+                        message["exception"][2]
+                    )
                 start_response(
                     "500 Internal Server Error",
-                    [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", "28")],
+                    [
+                        ("Content-Type", "text/plain; charset=utf-8"),
+                        ("Content-Length", "28"),
+                    ],
                     message["exception"],
                 )
                 yield b"Server got itself in trouble"
                 self.wsgi_should_stop = True
             elif message_type == "receive":
                 read_size = min(65536, content_length - read_count)
-                if read_size == 0:
+                if read_size == 0:  # No more body, so don't read anymore
                     if not receive_eof:
                         self.receive_event.set(
                             {"type": "http.request", "body": b"", "more_body": False}
                         )
                         receive_eof = True
+                    else:
+                        pass  # let `await receive()` wait
                 else:
-                    data = body.read(read_size)
+                    data: bytes = body.read(read_size)
                     read_count += len(data)
+                    more_body = read_count < content_length
                     self.receive_event.set(
-                        {"type": "http.request", "body": data, "more_body": read_count < content_length}
+                        {"type": "http.request", "body": data, "more_body": more_body}
                     )
             else:
                 raise RuntimeError(f"Unknown message type: {message_type}")
@@ -261,6 +295,7 @@ class ASGIResponder:
             if self.asgi_done.is_set():
                 break
 
+        # HTTP response ends, wait for run_asgi's background tasks
         self.asgi_done.wait(self.wait_time)
         self.loop.call_soon_threadsafe(asgi_task.cancel)
         yield b""
