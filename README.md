@@ -64,6 +64,6 @@ There is a lot of support for WSGI. Converting ASGI to WSGI, you will be able to
 
 This list quickly demonstrates the compatibility of some common frameworks for users who are unfamiliar with the WSGI and ASGI protocols.
 
-- WSGI: [Django(wsgi)](https://docs.djangoproject.com/en/3.0/howto/deployment/wsgi/)/[Kuí(wsgi)](https://kui.aber.sh/wsgi/)/[Pyramid](https://trypyramid.com/)/[Bottle](https://bottlepy.org/)/[Flask](https://flask.palletsprojects.com/)
-- ASGI: [Django(asgi)](https://docs.djangoproject.com/en/3.0/howto/deployment/asgi/)/[Kuí(asgi)](https://kui.aber.sh/asgi/)/[Starlette](https://www.starlette.io/)/[FastAPI](https://fastapi.tiangolo.com/)/[Sanic](https://sanic.readthedocs.io/en/stable/)/[Quart](https://pgjones.gitlab.io/quart/)
+- WSGI: [Django(wsgi)](https://docs.djangoproject.com/en/3.0/howto/deployment/wsgi/)/[Kuí(wsgi)](https://kui.aber.sh/wsgi/)/[Falcon(wsgi)](https://falcon.readthedocs.io/en/stable/api/app.html#wsgi-app)/[Pyramid](https://trypyramid.com/)/[Bottle](https://bottlepy.org/)/[Flask](https://flask.palletsprojects.com/)
+- ASGI: [Django(asgi)](https://docs.djangoproject.com/en/3.0/howto/deployment/asgi/)/[Kuí(asgi)](https://kui.aber.sh/asgi/)/[Falcon(asgi)](https://falcon.readthedocs.io/en/stable/api/app.html#asgi-app)/[Starlette](https://www.starlette.io/)/[FastAPI](https://fastapi.tiangolo.com/)/[Sanic](https://sanic.readthedocs.io/en/stable/)/[Quart](https://pgjones.gitlab.io/quart/)
 - **Unsupport**: [aiohttp](https://docs.aiohttp.org/en/stable/)
