@@ -95,7 +95,7 @@ def build_scope(environ: Environ) -> HTTPScope:
     scope: HTTPScope = {
         "wsgi_environ": environ,  # type: ignore a2wsgi
         "type": "http",
-        "asgi": {"version": "3.0", "spec_version": "3.0"},
+        "asgi": {"version": "3.0", "spec_version": "2.5"},
         "http_version": environ.get("SERVER_PROTOCOL", "http/1.0").split("/")[1],
         "method": environ["REQUEST_METHOD"],
         "scheme": environ.get("wsgi.url_scheme", "http"),
