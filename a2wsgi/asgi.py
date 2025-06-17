@@ -285,6 +285,8 @@ class ASGIResponder:
                     self.receive_event.set(
                         {"type": "http.request", "body": data, "more_body": more_body}
                     )
+                    if more_body is False:
+                        receive_eof = True
             else:
                 raise RuntimeError(f"Unknown message type: {message_type}")
 
