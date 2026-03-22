@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import os
 import threading
 from http import HTTPStatus
 from io import BytesIO
@@ -127,17 +128,54 @@ class ASGIMiddleware:
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         self.app = app
-        if loop is None:
-            loop = asyncio.new_event_loop()
-            loop_threading = threading.Thread(target=loop.run_forever, daemon=True)
-            loop_threading.start()
-        self.loop = loop
         self.wait_time = wait_time
+        self._loop_lock = threading.Lock()
+        self._loop_pid = os.getpid()
+        self._loop_thread: Optional[threading.Thread] = None
+        self._own_loop = loop is None
+        if loop is None:
+            loop = self._create_loop()
+        self.loop = loop
+
+    def _create_loop(self) -> asyncio.AbstractEventLoop:
+        loop = asyncio.new_event_loop()
+        self._loop_thread = threading.Thread(
+            target=loop.run_forever, daemon=True
+        )
+        self._loop_thread.start()
+        self._loop_pid = os.getpid()
+        return loop
+
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        if not self._own_loop:
+            return self.loop
+
+        thread_dead = (
+            self._loop_thread is None or not self._loop_thread.is_alive()
+        )
+        if (
+            self._loop_pid == os.getpid()
+            and not self.loop.is_closed()
+            and not thread_dead
+        ):
+            return self.loop
+
+        with self._loop_lock:
+            thread_dead = (
+                self._loop_thread is None or not self._loop_thread.is_alive()
+            )
+            if (
+                self._loop_pid != os.getpid()
+                or self.loop.is_closed()
+                or thread_dead
+            ):
+                self.loop = self._create_loop()
+        return self.loop
 
     def __call__(
         self, environ: Environ, start_response: StartResponse
     ) -> Iterable[bytes]:
-        return ASGIResponder(self.app, self.loop, self.wait_time)(
+        return ASGIResponder(self.app, self._ensure_loop(), self.wait_time)(
             environ, start_response
         )
 

@@ -110,6 +110,25 @@ def test_asgi_post():
         assert response.text == "hi boy"
 
 
+def test_asgi_recreates_internal_loop_after_fork(monkeypatch):
+    app = ASGIMiddleware(hello_world)
+    original_loop = app.loop
+    original_pid = app._loop_pid
+
+    monkeypatch.setattr(
+        "a2wsgi.asgi.os.getpid", lambda: original_pid + 1
+    )
+
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.text == "Hello, world!"
+    assert app.loop is not original_loop
+
+
 def test_asgi_exception():
     app = ASGIMiddleware(raise_exception)
     with httpx.Client(
