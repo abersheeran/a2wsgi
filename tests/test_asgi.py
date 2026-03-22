@@ -129,6 +129,26 @@ def test_asgi_recreates_internal_loop_after_fork(monkeypatch):
     assert app.loop is not original_loop
 
 
+def test_asgi_recreates_internal_loop_when_thread_is_dead():
+    app = ASGIMiddleware(hello_world)
+    original_loop = app.loop
+
+    class DeadThread:
+        def is_alive(self):
+            return False
+
+    app._loop_thread = DeadThread()
+
+    with httpx.Client(
+        transport=httpx.WSGITransport(app=app), base_url="http://testserver:80"
+    ) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.text == "Hello, world!"
+    assert app.loop is not original_loop
+
+
 def test_asgi_exception():
     app = ASGIMiddleware(raise_exception)
     with httpx.Client(

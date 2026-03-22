@@ -133,9 +133,7 @@ class ASGIMiddleware:
         self._loop_pid = os.getpid()
         self._loop_thread: Optional[threading.Thread] = None
         self._own_loop = loop is None
-        if loop is None:
-            loop = self._create_loop()
-        self.loop = loop
+        self.loop = loop if loop is not None else self._create_loop()
 
     def _create_loop(self) -> asyncio.AbstractEventLoop:
         loop = asyncio.new_event_loop()
@@ -146,28 +144,18 @@ class ASGIMiddleware:
         self._loop_pid = os.getpid()
         return loop
 
+    def _loop_thread_dead(self) -> bool:
+        return self._loop_thread is None or not self._loop_thread.is_alive()
+
     def _ensure_loop(self) -> asyncio.AbstractEventLoop:
         if not self._own_loop:
             return self.loop
 
-        thread_dead = (
-            self._loop_thread is None or not self._loop_thread.is_alive()
-        )
-        if (
-            self._loop_pid == os.getpid()
-            and not self.loop.is_closed()
-            and not thread_dead
-        ):
-            return self.loop
-
         with self._loop_lock:
-            thread_dead = (
-                self._loop_thread is None or not self._loop_thread.is_alive()
-            )
             if (
                 self._loop_pid != os.getpid()
                 or self.loop.is_closed()
-                or thread_dead
+                or self._loop_thread_dead()
             ):
                 self.loop = self._create_loop()
         return self.loop
