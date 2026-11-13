@@ -51,7 +51,7 @@ class Body:
                 result = bytes(self.buffer[: lf_index + 1])
                 del self.buffer[: lf_index + 1]
                 return result
-            elif limit != -1:
+            elif 0 <= limit <= len(self.buffer):
                 result = bytes(self.buffer[:limit])
                 del self.buffer[:limit]
                 return result
